@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "bibman",
+	"version": "0.1.0",
+	"description": "Gestiona referencias bibliográficas inline con la sintaxis {{referencia}} y {{referencia:pag-pag}}.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
