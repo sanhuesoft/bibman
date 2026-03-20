@@ -75,3 +75,14 @@
   font-size: var(--font-ui-smaller, 0.8em);
   color: var(--text-error);
 }
+
+/* Suggest dropdown styles */
+.bibman-suggest {
+  min-width: 280px;
+  padding: 8px 12px;
+}
+
+.bibman-suggest-name {
+  font-size: 0.95em;
+  line-height: 1.2;
+}

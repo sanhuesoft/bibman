@@ -4,7 +4,10 @@ import {
   MarkdownView,
   Plugin,
   TFile,
+  Editor,
   EditorSuggest,
+  EditorPosition,
+  EditorSuggestTriggerInfo,
   App,
 } from "obsidian";
 import {
@@ -156,14 +159,24 @@ export default class BibmanPlugin extends Plugin {
     this.registerEditorExtension(citationEditorPlugin);
     // Register an editor suggest that triggers on "{{" and lists files
     // from the Bibliografía folder.
+    type SuggestContext = {
+      start: { line: number; ch: number };
+      end: { line: number; ch: number };
+      query?: string;
+      editor: Editor;
+    };
+
     this.bibSuggest = new (class extends EditorSuggest<TFile> {
       plugin: BibmanPlugin;
+
       constructor(app: App, plugin: BibmanPlugin) {
         super(app);
         this.plugin = plugin;
       }
 
-      onTrigger(cursor: any, editor: any, _view: any) {
+      // suggest methods
+
+      onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile | null): EditorSuggestTriggerInfo | null {
         const line = editor.getLine(cursor.line).slice(0, cursor.ch);
         const m = line.match(/\{\{([^}]*)$/);
         if (!m) return null;
@@ -172,11 +185,11 @@ export default class BibmanPlugin extends Plugin {
         return {
           start: { line: cursor.line, ch: startCh },
           end: cursor,
-          query: m[1],
+          query: (m[1] ?? ""),
         };
       }
 
-      async getSuggestions(context: any) {
+      getSuggestions(context: { query?: string }) {
         const q = (context.query ?? "").toLowerCase().trim();
 
         const files = this.app.vault.getFiles().filter(
@@ -184,67 +197,52 @@ export default class BibmanPlugin extends Plugin {
         );
 
         if (q.length === 0) {
-          // When the user hasn't typed anything, show an alphabetically
-          // ordered list by basename.
-          const sorted = files.slice().sort((a, b) =>
-            a.basename.localeCompare(b.basename),
-          );
+          const sorted = files.slice().sort((a, b) => a.basename.localeCompare(b.basename));
           return sorted.slice(0, 100);
         }
 
-        // Preserve Obsidian's natural order from getFiles() after filtering.
         const results = files.filter((f) =>
           f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
         );
 
-        // Limit to 100 suggestions to be safe
         return results.slice(0, 100);
       }
 
       renderSuggestion(file: TFile, el: HTMLElement) {
         el.empty();
-        el.style.minWidth = "280px";
-        el.style.padding = "8px 12px";
+        el.addClass("bibman-suggest");
 
         const name = el.createEl("div", { text: file.basename });
         name.addClass("bibman-suggest-name");
-        name.style.fontSize = "0.95em";
-        name.style.lineHeight = "1.2";
       }
 
-      async selectSuggestion(file: TFile) {
-        const ctx = this.context;
+      selectSuggestion(file: TFile): void {
+        const ctx = this.context as unknown as { start: { line: number; ch: number }; end: { line: number; ch: number }; editor: Editor } | null;
         if (!ctx) return;
         const editor = ctx.editor;
 
-        // Look ahead up to two characters to detect existing closing braces
-        // (Obsidian may auto-close to `{{}}`). We will expand the replace
-        // end to consume existing `}` characters so we don't end up with
-        // duplicated braces like `{{ref}}}`.
         const look = editor.getRange(ctx.end, { line: ctx.end.line, ch: ctx.end.ch + 2 });
         let extra = 0;
         if (look.startsWith("}}")) extra = 2;
         else if (look.startsWith("}")) extra = 1;
 
-        const replaceEnd = extra
-          ? { line: ctx.end.line, ch: ctx.end.ch + extra }
-          : ctx.end;
+        const replaceEnd = extra ? { line: ctx.end.line, ch: ctx.end.ch + extra } : ctx.end;
 
         const insertText = `{{${file.basename}}}`;
         editor.replaceRange(insertText, ctx.start, replaceEnd);
-        // Place cursor after the inserted closing braces
         try {
           editor.setCursor({ line: ctx.start.line, ch: ctx.start.ch + insertText.length });
-        } catch (e) {
-          // Fallback: some editor implementations accept two-arg setCursor
+        } catch (_e) {
           try {
             // @ts-ignore
             editor.setCursor(ctx.start.line, ctx.start.ch + insertText.length);
-          } catch {}
+          } catch (err) {
+            console.debug("setCursor fallback failed", err);
+          }
         }
       }
     })(this.app, this);
-    this.registerEditorSuggest(this.bibSuggest);
+    this.registerEditorSuggest(this.bibSuggest!);
   }
 
   onunload(): void {
@@ -264,15 +262,16 @@ export default class BibmanPlugin extends Plugin {
     if (!(file instanceof TFile)) return null;
 
     const cache = this.app.metadataCache.getFileCache(file);
-    const fm = cache?.frontmatter as Record<string, unknown> | undefined;
-    if (!fm) return null;
+    const fm = cache?.frontmatter;
+    if (!fm || typeof fm !== "object") return null;
+    const fmr = fm as Record<string, unknown>;
 
     return {
-      author: typeof fm["author"] === "string" ? fm["author"] : undefined,
-      title: typeof fm["title"] === "string" ? fm["title"] : undefined,
+      author: typeof fmr["author"] === "string" ? (fmr["author"] as string) : undefined,
+      title: typeof fmr["title"] === "string" ? (fmr["title"] as string) : undefined,
       year:
-        typeof fm["year"] === "string" || typeof fm["year"] === "number"
-          ? (fm["year"] as string | number)
+        typeof fmr["year"] === "string" || typeof fmr["year"] === "number"
+          ? (fmr["year"] as string | number)
           : undefined,
     };
   }
