@@ -33,6 +33,7 @@ const CITATION_SOURCE = String.raw`\{\{([^}:]+?)(?::([^}]+?))?\}\}`;
 
 interface BibEntry {
   author?: string;
+  authors?: string[];
   title?: string;
   year?: string | number;
 }
@@ -80,15 +81,31 @@ class BibmanRenderChild extends MarkdownRenderChild {
         p.className = "bibman-popup__title";
         p.textContent = entry.title;
       }
-      if (entry.author) {
+      let authorLine = "";
+      if (Array.isArray(entry.authors) && entry.authors.length > 0) {
+        authorLine = entry.authors.join(" · ");
+      } else if (entry.author) {
+        authorLine = entry.author;
+      }
+      if (authorLine) {
         const p = popup.appendChild(document.createElement("p"));
         p.className = "bibman-popup__author";
-        p.textContent = entry.author;
+        p.textContent = authorLine;
       }
       if (entry.year != null) {
         const p = popup.appendChild(document.createElement("p"));
         p.className = "bibman-popup__year";
         p.textContent = String(entry.year);
+      }
+
+      const hasAny = !!entry.title || !!authorLine || entry.year != null;
+      if (!hasAny) {
+        const pf = popup.appendChild(document.createElement("p"));
+        pf.className = "bibman-popup__file";
+        pf.textContent = key;
+        const pn = popup.appendChild(document.createElement("p"));
+        pn.className = "bibman-popup__note";
+        pn.textContent = "Sin metadatos disponibles en la referencia.";
       }
     } else {
       const p = popup.appendChild(document.createElement("p"));
@@ -268,6 +285,11 @@ export default class BibmanPlugin extends Plugin {
 
     return {
       author: typeof fmr["author"] === "string" ? (fmr["author"] as string) : undefined,
+      authors: Array.isArray(fmr["authors"])
+        ? (fmr["authors"] as unknown[]).filter((a) => typeof a === "string") as string[]
+        : Array.isArray(fmr["author"])
+        ? (fmr["author"] as unknown[]).filter((a) => typeof a === "string") as string[]
+        : undefined,
       title: typeof fmr["title"] === "string" ? (fmr["title"] as string) : undefined,
       year:
         typeof fmr["year"] === "string" || typeof fmr["year"] === "number"
@@ -324,7 +346,7 @@ export default class BibmanPlugin extends Plugin {
           sup.className = "bibman-cite";
           sup.dataset.bibkey = match[1];
           if (match[2]) sup.dataset.bibpages = match[2];
-          sup.textContent = "[?]";
+          sup.textContent = "[REF]";
           frags.push(sup);
 
           cursor = match.index + match[0].length;
@@ -394,9 +416,8 @@ export default class BibmanPlugin extends Plugin {
         const key = cite.dataset.bibkey ?? "";
         if (!keyOrder.has(key)) keyOrder.set(key, ++counter);
         const n = keyOrder.get(key)!;
-        const pages = cite.dataset.bibpages;
-        // Non-breaking space before page numbers for typographic consistency
-        cite.textContent = pages ? `[${n},\u00a0p.\u00a0${pages}]` : `[${n}]`;
+        // Keep citations as a generic reference marker — no numbering
+        cite.textContent = "[REF]";
       }
     }
   }

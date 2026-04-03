@@ -4,77 +4,44 @@
    respects the active theme automatically.
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* ── Edit mode / live-preview: dim the raw {{...}} syntax ─────────────────── */
-
+/* {{...}} citation syntax in source / live-preview — same colour as comments, no background */
 .bibman-inline-cite {
-  opacity: 0.45;
+  color: var(--text-faint, var(--text-muted));
 }
 
-/* ── Reading mode: citation superscript marker ─────────────────────────────── */
-
-.bibman-cite {
-  cursor: help;
-  color: var(--color-accent);
-  font-size: 0.72em;
-  font-weight: var(--font-semibold, 600);
+/* Citation refs in Reading view */
+.markdown-preview-view sup.bibman-cite {
+  cursor: pointer;
+  font-size: 0.8em;
+  color: var(--link-color, var(--text-accent));
   vertical-align: super;
   line-height: 0;
-  padding: 0 1px;
-  white-space: nowrap;
-  border-radius: 2px;
-  transition: background-color 120ms ease;
 }
 
-.bibman-cite:hover {
-  background-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
-}
-
-/* ── Hover popup ───────────────────────────────────────────────────────────── */
-
+/* Hover popup for bib references */
 .bibman-popup {
   position: fixed;
-  top: var(--bibman-y, 0px);
   left: var(--bibman-x, 0px);
-  z-index: var(--layer-popover, 100);
-  min-width: 160px;
-  max-width: 320px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1, 4px);
-  padding: var(--size-4-2, 8px) var(--size-4-3, 12px);
-  background-color: var(--background-primary);
+  top: var(--bibman-y, 0px);
+  background: var(--background-modifier-card, #fff);
+  color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 6px);
-  box-shadow: var(--shadow-m, 0 4px 16px rgba(0, 0, 0, 0.2));
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  padding: 10px 14px;
+  max-width: 320px;
+  font-size: 13px;
+  z-index: 10000;
+  line-height: 1.5;
   pointer-events: none;
 }
-
-.bibman-popup p {
-  margin: 0;
-  line-height: var(--line-height-tight, 1.3);
-}
-
-.bibman-popup__title {
-  font-weight: var(--font-semibold, 600);
-  font-size: var(--font-ui-small, 0.875em);
-  color: var(--text-normal);
-}
-
-.bibman-popup__author {
-  font-style: italic;
-  font-size: var(--font-ui-smaller, 0.8em);
-  color: var(--text-muted);
-}
-
-.bibman-popup__year {
-  font-size: var(--font-ui-smaller, 0.8em);
-  color: var(--text-faint);
-}
-
-.bibman-popup__error {
-  font-size: var(--font-ui-smaller, 0.8em);
-  color: var(--text-error);
-}
+.bibman-popup p { margin: 0; }
+.bibman-popup__title { font-weight: 600; margin-bottom: 4px !important; }
+.bibman-popup__author { color: var(--text-muted); font-size: 12px; margin-bottom: 2px !important; }
+.bibman-popup__file { font-weight: 600; margin-bottom: 4px !important; color: var(--text-normal); }
+.bibman-popup__note { color: var(--text-muted); font-size: 12px; margin-bottom: 2px !important; }
+.bibman-popup__year { color: var(--text-muted); font-size: 12px; }
+.bibman-popup__error { color: var(--text-error); font-size: 12px; }
 
 /* Suggest dropdown styles */
 .bibman-suggest {
