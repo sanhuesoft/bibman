@@ -24,10 +24,11 @@ import { RangeSetBuilder } from "@codemirror/state";
 const BIBLIO_FOLDER = "Bibliografía";
 
 /**
- * Matches {{key}} or {{key:pages}}.
- * Group 1 → key, Group 2 → pages (optional).
+ * Matches {{{key}}} or {{key}} (with optional :pages).
+ * Use a non-capturing alternation so callers can test the full match
+ * and examine the first characters to determine whether it's triple.
  */
-const CITATION_SOURCE = String.raw`\{\{([^}:]+?)(?::([^}]+?))?\}\}`;
+const CITATION_SOURCE = String.raw`(?:\{\{\{[^}:]+?(?::[^}]+?)?\}\}\}|\{\{[^}:]+?(?::[^}]+?)?\}\})`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,8 @@ class BibmanRenderChild extends MarkdownRenderChild {
 
 function decorateView(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  const mark = Decoration.mark({ class: "bibman-inline-cite" });
+  const markDouble = Decoration.mark({ class: "bibman-inline-cite" });
+  const markTriple = Decoration.mark({ class: "bibman-inline-cite--triple" });
   const re = new RegExp(CITATION_SOURCE, "g");
 
   for (const { from, to } of view.visibleRanges) {
@@ -140,7 +142,12 @@ function decorateView(view: EditorView): DecorationSet {
     let match: RegExpExecArray | null;
     while ((match = re.exec(text)) !== null) {
       const start = from + match.index;
-      builder.add(start, start + match[0].length, mark);
+      const len = match[0].length;
+      if (match[0].startsWith("{{{")) {
+        builder.add(start, start + len, markTriple);
+      } else {
+        builder.add(start, start + len, markDouble);
+      }
     }
   }
 
@@ -195,6 +202,16 @@ export default class BibmanPlugin extends Plugin {
 
       onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile | null): EditorSuggestTriggerInfo | null {
         const line = editor.getLine(cursor.line).slice(0, cursor.ch);
+        const triple = line.match(/\{\{\{([^}]*)$/);
+        if (triple) {
+          const startCh = triple.index ?? 0;
+          return {
+            start: { line: cursor.line, ch: startCh },
+            end: cursor,
+            query: (triple[1] ?? ""),
+          };
+        }
+
         const m = line.match(/\{\{([^}]*)$/);
         if (!m) return null;
 
@@ -238,14 +255,18 @@ export default class BibmanPlugin extends Plugin {
         if (!ctx) return;
         const editor = ctx.editor;
 
-        const look = editor.getRange(ctx.end, { line: ctx.end.line, ch: ctx.end.ch + 2 });
+        const look = editor.getRange(ctx.end, { line: ctx.end.line, ch: ctx.end.ch + 3 });
         let extra = 0;
-        if (look.startsWith("}}")) extra = 2;
+        if (look.startsWith("}}}")) extra = 3;
+        else if (look.startsWith("}}")) extra = 2;
         else if (look.startsWith("}")) extra = 1;
 
         const replaceEnd = extra ? { line: ctx.end.line, ch: ctx.end.ch + extra } : ctx.end;
 
-        const insertText = `{{${file.basename}}}`;
+        const prefix = editor.getRange(ctx.start, ctx.end);
+        const isTriple = prefix.startsWith("{{{");
+        const insertText = isTriple ? `{{{${file.basename}}}}` : `{{${file.basename}}}`;
+
         editor.replaceRange(insertText, ctx.start, replaceEnd);
         try {
           editor.setCursor({ line: ctx.start.line, ch: ctx.start.ch + insertText.length });
@@ -326,9 +347,9 @@ export default class BibmanPlugin extends Plugin {
       },
     });
 
-    const re = new RegExp(CITATION_SOURCE, "g");
-    const pending: Array<{ node: Text; frags: Array<string | HTMLElement> }> =
-      [];
+    // Match either triple braces {{{key}}} or double braces {{key}}
+    const re = new RegExp(String.raw`\{\{\{([^}:]+?)(?::([^}]+?))?\}\}\}|\{\{([^}:]+?)(?::([^}]+?))?\}\}`, "g");
+    const pending: Array<{ node: Text; frags: Array<string | HTMLElement> }> = [];
 
     let node: Node | null = walker.nextNode();
     while (node !== null) {
@@ -342,12 +363,27 @@ export default class BibmanPlugin extends Plugin {
         while ((match = re.exec(text)) !== null) {
           if (match.index > cursor) frags.push(text.slice(cursor, match.index));
 
-          const sup = document.createElement("sup");
-          sup.className = "bibman-cite";
-          sup.dataset.bibkey = match[1];
-          if (match[2]) sup.dataset.bibpages = match[2];
-          sup.textContent = "[REF]";
-          frags.push(sup);
+          const isTriple = !!match[1];
+          const key = isTriple ? match[1] : match[3];
+          const pages = isTriple ? match[2] : match[4];
+
+          if (isTriple) {
+            const span = document.createElement("span");
+            span.className = "bibman-cite";
+            span.dataset.bibkey = key;
+            if (pages) span.dataset.bibpages = pages;
+            span.dataset.bibvariant = "triple";
+            span.textContent = "[Referencia]";
+            frags.push(span);
+          } else {
+            const sup = document.createElement("sup");
+            sup.className = "bibman-cite";
+            sup.dataset.bibkey = key;
+            if (pages) sup.dataset.bibpages = pages;
+            sup.dataset.bibvariant = "double";
+            sup.textContent = "[REF]";
+            frags.push(sup);
+          }
 
           cursor = match.index + match[0].length;
         }
@@ -417,7 +453,11 @@ export default class BibmanPlugin extends Plugin {
         if (!keyOrder.has(key)) keyOrder.set(key, ++counter);
         const n = keyOrder.get(key)!;
         // Keep citations as a generic reference marker — no numbering
-        cite.textContent = "[REF]";
+        if (cite.dataset.bibvariant === "triple") {
+          cite.textContent = "[Referencia]";
+        } else {
+          cite.textContent = "[REF]";
+        }
       }
     }
   }

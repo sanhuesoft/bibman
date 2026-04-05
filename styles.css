@@ -9,6 +9,11 @@
   color: var(--text-faint, var(--text-muted));
 }
 
+/* Triple-brace inline cites should also be fully muted in the editor/live-preview */
+.bibman-inline-cite--triple {
+  color: var(--text-faint, var(--text-muted));
+}
+
 /* Citation refs in Reading view */
 .markdown-preview-view sup.bibman-cite {
   cursor: pointer;
@@ -16,6 +21,14 @@
   color: var(--link-color, var(--text-accent));
   vertical-align: super;
   line-height: 0;
+}
+
+/* Triple-brace rendered references are plain inline elements and should
+   appear with the theme's link color (and behave like links visually). */
+.markdown-preview-view span.bibman-cite[data-bibvariant="triple"] {
+  color: var(--link-color, var(--text-accent));
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* Hover popup for bib references */
