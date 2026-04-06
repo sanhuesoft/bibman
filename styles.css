@@ -4,14 +4,19 @@
    respects the active theme automatically.
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* {{...}} citation syntax in source / live-preview — same colour as comments, no background */
-.bibman-inline-cite {
-  color: var(--text-faint, var(--text-muted));
+/* {{...}} citation syntax in source / live-preview — same colour as comments, no background.
+   The `*` rule is needed because CM6 nests child spans for other decorations (e.g. cm-bracket)
+   inside our mark span. Inherited color — even with !important on the parent — does NOT
+   override a directly-applied color on a child, so we must target descendants explicitly. */
+.bibman-inline-cite,
+.bibman-inline-cite * {
+  color: var(--text-faint, var(--text-muted)) !important;
 }
 
 /* Triple-brace inline cites should also be fully muted in the editor/live-preview */
-.bibman-inline-cite--triple {
-  color: var(--text-faint, var(--text-muted));
+.bibman-inline-cite--triple,
+.bibman-inline-cite--triple * {
+  color: var(--text-faint, var(--text-muted)) !important;
 }
 
 /* Citation refs in Reading view */
