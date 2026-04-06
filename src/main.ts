@@ -93,6 +93,12 @@ class BibmanRenderChild extends MarkdownRenderChild {
         p.className = "bibman-popup__author";
         p.textContent = authorLine;
       }
+      const pages = cite.dataset.bibpages;
+      if (pages) {
+        const p = popup.appendChild(document.createElement("p"));
+        p.className = "bibman-popup__pages";
+        p.textContent = `p. ${pages}`;
+      }
       if (entry.year != null) {
         const p = popup.appendChild(document.createElement("p"));
         p.className = "bibman-popup__year";
@@ -177,8 +183,14 @@ export default class BibmanPlugin extends Plugin {
   private bibSuggest: EditorSuggest<TFile> | null = null;
   /** Debounce handles for the document-wide numbering sweep, keyed by sourcePath. */
   private readonly sweepTimers = new Map<string, number>();
+  /** basename → last-used timestamp (ms). Persisted in plugin data. */
+  recentlyUsed: Map<string, number> = new Map();
 
   async onload(): Promise<void> {
+    const saved = await this.loadData() as { recentlyUsed?: Record<string, number> } | null;
+    if (saved?.recentlyUsed) {
+      this.recentlyUsed = new Map(Object.entries(saved.recentlyUsed));
+    }
     this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
     this.registerEditorExtension(citationEditorPlugin);
     // Register an editor suggest that triggers on "{{" and lists files
@@ -192,10 +204,65 @@ export default class BibmanPlugin extends Plugin {
 
     this.bibSuggest = new (class extends EditorSuggest<TFile> {
       plugin: BibmanPlugin;
+      private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
       constructor(app: App, plugin: BibmanPlugin) {
         super(app);
         this.plugin = plugin;
+        // Intercept Tab in capture phase so we can confirm the suggestion
+        // with cursor-before-}} behaviour before Obsidian swallows the key.
+        this._keydownHandler = (e: KeyboardEvent) => {
+          if (e.key !== "Tab" || !this.context) return;
+          // Access the internal chooser that Obsidian uses for suggestions.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const chooser = (this as any).chooser as
+            | { values: TFile[]; selectedItem: number }
+            | undefined;
+          if (!chooser) return;
+          const file = chooser.values?.[chooser.selectedItem];
+          if (!file) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this._insert(file, /* tabMode */ true);
+          this.close();
+        };
+        document.addEventListener("keydown", this._keydownHandler, true);
+      }
+
+      /** Shared insert logic. tabMode=true → cursor before }}, false → after }} */
+      private _insert(file: TFile, tabMode: boolean): void {
+        const ctx = this.context as unknown as { start: { line: number; ch: number }; end: { line: number; ch: number }; editor: Editor } | null;
+        if (!ctx) return;
+        const editor = ctx.editor;
+
+        const prefix = editor.getRange(ctx.start, ctx.end);
+        const isTriple = prefix.startsWith("{{{");
+        const insertText = isTriple ? `{{{${file.basename}}}}` : `{{${file.basename}}}`;
+        const closingLen = isTriple ? 3 : 2;
+
+        // Detect auto-paired closing braces already present after the cursor
+        const lineText = editor.getLine(ctx.end.line);
+        const afterCursor = lineText.slice(ctx.end.ch);
+        const trailingMatch = afterCursor.match(/^(}+)/);
+        const extra = trailingMatch ? Math.min(trailingMatch[1]!.length, closingLen) : 0;
+        const replaceEnd = extra > 0 ? { line: ctx.end.line, ch: ctx.end.ch + extra } : ctx.end;
+
+        const cursorCh = tabMode
+          ? ctx.start.ch + insertText.length - closingLen  // before }}
+          : ctx.start.ch + insertText.length;              // after }}
+
+        editor.replaceRange(insertText, ctx.start, replaceEnd);
+        try {
+          editor.setCursor({ line: ctx.start.line, ch: cursorCh });
+        } catch (_e) {
+          try {
+            // @ts-ignore
+            editor.setCursor(ctx.start.line, cursorCh);
+          } catch (err) {
+            console.debug("setCursor fallback failed", err);
+          }
+        }
+        this.plugin.recordUsage(file.basename);
       }
 
       // suggest methods
@@ -225,21 +292,31 @@ export default class BibmanPlugin extends Plugin {
 
       getSuggestions(context: { query?: string }) {
         const q = (context.query ?? "").toLowerCase().trim();
+        const folderPrefix = `${BIBLIO_FOLDER}/`;
+        const recentlyUsed = this.plugin.recentlyUsed;
 
         const files = this.app.vault.getFiles().filter(
-          (f) => f.path.startsWith(`${BIBLIO_FOLDER}/`) && f.extension === "md",
+          (f) =>
+            f.path.normalize().startsWith(folderPrefix.normalize()) &&
+            f.extension === "md",
         );
 
+        const sortByRecency = (a: TFile, b: TFile) => {
+          const ta = recentlyUsed.get(a.basename) ?? 0;
+          const tb = recentlyUsed.get(b.basename) ?? 0;
+          if (tb !== ta) return tb - ta;
+          return a.basename.localeCompare(b.basename);
+        };
+
         if (q.length === 0) {
-          const sorted = files.slice().sort((a, b) => a.basename.localeCompare(b.basename));
-          return sorted.slice(0, 100);
+          return files.slice().sort(sortByRecency).slice(0, 100);
         }
 
         const results = files.filter((f) =>
           f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
         );
 
-        return results.slice(0, 100);
+        return results.sort(sortByRecency).slice(0, 100);
       }
 
       renderSuggestion(file: TFile, el: HTMLElement) {
@@ -250,34 +327,10 @@ export default class BibmanPlugin extends Plugin {
         name.addClass("bibman-suggest-name");
       }
 
-      selectSuggestion(file: TFile): void {
-        const ctx = this.context as unknown as { start: { line: number; ch: number }; end: { line: number; ch: number }; editor: Editor } | null;
-        if (!ctx) return;
-        const editor = ctx.editor;
-
-        const look = editor.getRange(ctx.end, { line: ctx.end.line, ch: ctx.end.ch + 3 });
-        let extra = 0;
-        if (look.startsWith("}}}")) extra = 3;
-        else if (look.startsWith("}}")) extra = 2;
-        else if (look.startsWith("}")) extra = 1;
-
-        const replaceEnd = extra ? { line: ctx.end.line, ch: ctx.end.ch + extra } : ctx.end;
-
-        const prefix = editor.getRange(ctx.start, ctx.end);
-        const isTriple = prefix.startsWith("{{{");
-        const insertText = isTriple ? `{{{${file.basename}}}}` : `{{${file.basename}}}`;
-
-        editor.replaceRange(insertText, ctx.start, replaceEnd);
-        try {
-          editor.setCursor({ line: ctx.start.line, ch: ctx.start.ch + insertText.length });
-        } catch (_e) {
-          try {
-            // @ts-ignore
-            editor.setCursor(ctx.start.line, ctx.start.ch + insertText.length);
-          } catch (err) {
-            console.debug("setCursor fallback failed", err);
-          }
-        }
+      selectSuggestion(file: TFile, _evt: KeyboardEvent | MouseEvent): void {
+        // Enter / click → cursor after }}
+        // Tab is handled by the keydown interceptor above; this path is never Tab.
+        this._insert(file, /* tabMode */ false);
       }
     })(this.app, this);
     this.registerEditorSuggest(this.bibSuggest!);
@@ -285,9 +338,20 @@ export default class BibmanPlugin extends Plugin {
 
   onunload(): void {
     for (const timer of this.sweepTimers.values()) clearTimeout(timer);
-    this.sweepTimers.clear();
-    // unregister suggest if present
+    this.sweepTimers.clear();    // Clean up the keydown listener from the suggest
+    if (this.bibSuggest) {
+      const s = this.bibSuggest as unknown as { _keydownHandler: ((e: KeyboardEvent) => void) | null };
+      if (s._keydownHandler) {
+        document.removeEventListener("keydown", s._keydownHandler, true);
+        s._keydownHandler = null;
+      }
+    }
     this.bibSuggest = null;
+  }
+
+  recordUsage(basename: string): void {
+    this.recentlyUsed.set(basename, Date.now());
+    void this.saveData({ recentlyUsed: Object.fromEntries(this.recentlyUsed) });
   }
 
   /**

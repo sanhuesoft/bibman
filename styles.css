@@ -53,6 +53,7 @@
 .bibman-popup__author { color: var(--text-muted); font-size: 12px; margin-bottom: 2px !important; }
 .bibman-popup__file { font-weight: 600; margin-bottom: 4px !important; color: var(--text-normal); }
 .bibman-popup__note { color: var(--text-muted); font-size: 12px; margin-bottom: 2px !important; }
+.bibman-popup__pages { color: var(--text-muted); font-size: 12px; font-style: italic; }
 .bibman-popup__year { color: var(--text-muted); font-size: 12px; }
 .bibman-popup__error { color: var(--text-error); font-size: 12px; }
 
