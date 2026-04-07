@@ -41,11 +41,11 @@
   position: fixed;
   left: var(--bibman-x, 0px);
   top: var(--bibman-y, 0px);
-  background: var(--background-modifier-card, #fff);
+  background: var(--background-primary);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-m, 0 6px 18px rgba(0, 0, 0, 0.25));
   padding: 10px 14px;
   max-width: 320px;
   font-size: 13px;
