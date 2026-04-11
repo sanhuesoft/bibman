@@ -53,6 +53,19 @@
   line-height: 1.5;
   pointer-events: none;
 }
+.bibman-popup__web-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+.bibman-popup__web-badge svg {
+  width: 14px;
+  height: 14px;
+}
 .bibman-popup p { margin: 0; }
 .bibman-popup__title { font-weight: 600; margin-bottom: 4px !important; }
 .bibman-popup__author { color: var(--text-muted); font-size: 12px; margin-bottom: 2px !important; }
@@ -66,6 +79,11 @@
 .bibman-suggest {
   min-width: 280px;
   padding: 8px 12px;
+}
+
+.bibman-suggest--create .bibman-suggest-name {
+  color: var(--text-accent);
+  font-style: italic;
 }
 
 .bibman-suggest-name {

@@ -12,6 +12,7 @@ import {
   EditorSuggestTriggerInfo,
   App,
   requestUrl,
+  setIcon,
 } from "obsidian";
 import {
   Decoration,
@@ -62,6 +63,7 @@ class BibmanRenderChild extends MarkdownRenderChild {
           void this.showPopup(cite),
         );
         this.registerDomEvent(cite, "mouseleave", () => this.hidePopup());
+        this.registerDomEvent(cite, "click", () => this.openNote(cite));
       });
   }
 
@@ -78,6 +80,12 @@ class BibmanRenderChild extends MarkdownRenderChild {
 
     const popup = document.createElement("div");
     popup.className = "bibman-popup";
+
+    if (key.startsWith("W_")) {
+      const badge = popup.appendChild(document.createElement("span"));
+      badge.className = "bibman-popup__web-badge";
+      setIcon(badge, "globe");
+    }
 
     if (entry) {
       if (entry.title) {
@@ -135,6 +143,18 @@ class BibmanRenderChild extends MarkdownRenderChild {
     this.activePopup?.remove();
     this.activePopup = null;
   }
+
+  private openNote(cite: HTMLElement): void {
+    const key = cite.dataset.bibkey;
+    if (!key) return;
+    const path = `${BIBLIO_FOLDER}/${key}.md`;
+    const file = this.plugin.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      new Notice(`Bibman: no se encontró la nota "${key}".`);
+      return;
+    }
+    void this.plugin.app.workspace.getLeaf("tab").openFile(file);
+  }
 }
 
 // ── CM6 editor extension: dim {{...}} in source / live-preview mode ───────────
@@ -180,10 +200,14 @@ const citationEditorPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
+// ── Suggest item type ────────────────────────────────────────────────────────
+
+type BibSuggestion = TFile | { create: true; name: string };
+
 // ── Main plugin ───────────────────────────────────────────────────────────────
 
 export default class BibmanPlugin extends Plugin {
-  private bibSuggest: EditorSuggest<TFile> | null = null;
+  private bibSuggest: EditorSuggest<BibSuggestion> | null = null;
   /** Debounce handles for the document-wide numbering sweep, keyed by sourcePath. */
   private readonly sweepTimers = new Map<string, number>();
   /** basename → last-used timestamp (ms). Persisted in plugin data. */
@@ -205,7 +229,7 @@ export default class BibmanPlugin extends Plugin {
       editor: Editor;
     };
 
-    this.bibSuggest = new (class extends EditorSuggest<TFile> {
+    this.bibSuggest = new (class extends EditorSuggest<BibSuggestion> {
       plugin: BibmanPlugin;
       private _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -219,28 +243,32 @@ export default class BibmanPlugin extends Plugin {
           // Access the internal chooser that Obsidian uses for suggestions.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const chooser = (this as any).chooser as
-            | { values: TFile[]; selectedItem: number }
+            | { values: BibSuggestion[]; selectedItem: number }
             | undefined;
           if (!chooser) return;
-          const file = chooser.values?.[chooser.selectedItem];
-          if (!file) return;
+          const item = chooser.values?.[chooser.selectedItem];
+          if (!item) return;
           e.preventDefault();
           e.stopPropagation();
-          this._insert(file, /* tabMode */ true);
+          if ("create" in item) {
+            this._createAndInsert(item.name, /* tabMode */ true);
+          } else {
+            this._insert(item.basename, /* tabMode */ true);
+          }
           this.close();
         };
         document.addEventListener("keydown", this._keydownHandler, true);
       }
 
       /** Shared insert logic. tabMode=true → cursor before }}, false → after }} */
-      private _insert(file: TFile, tabMode: boolean): void {
+      private _insert(basename: string, tabMode: boolean): void {
         const ctx = this.context as unknown as { start: { line: number; ch: number }; end: { line: number; ch: number }; editor: Editor } | null;
         if (!ctx) return;
         const editor = ctx.editor;
 
         const prefix = editor.getRange(ctx.start, ctx.end);
         const isTriple = prefix.startsWith("{{{");
-        const insertText = isTriple ? `{{{${file.basename}}}}` : `{{${file.basename}}}`;
+        const insertText = isTriple ? `{{{${basename}}}}` : `{{${basename}}}`;
         const closingLen = isTriple ? 3 : 2;
 
         // Detect auto-paired closing braces already present after the cursor
@@ -265,7 +293,21 @@ export default class BibmanPlugin extends Plugin {
             console.debug("setCursor fallback failed", err);
           }
         }
-        this.plugin.recordUsage(file.basename);
+        this.plugin.recordUsage(basename);
+      }
+
+      /** Creates the file in Bibliografía if absent, then immediately inserts the citation. */
+      private _createAndInsert(name: string, tabMode: boolean): void {
+        const path = `${BIBLIO_FOLDER}/${name}.md`;
+        const existing = this.app.vault.getAbstractFileByPath(path);
+        const openFile = (file: TFile) =>
+          void this.app.workspace.getLeaf("tab").openFile(file);
+        if (!(existing instanceof TFile)) {
+          void this.app.vault.create(path, "").then(openFile);
+        } else {
+          openFile(existing);
+        }
+        this._insert(name, tabMode);
       }
 
       // suggest methods
@@ -293,7 +335,7 @@ export default class BibmanPlugin extends Plugin {
         };
       }
 
-      getSuggestions(context: { query?: string }) {
+      getSuggestions(context: { query?: string }): BibSuggestion[] {
         const q = (context.query ?? "").toLowerCase().trim();
         const folderPrefix = `${BIBLIO_FOLDER}/`;
         const recentlyUsed = this.plugin.recentlyUsed;
@@ -319,21 +361,36 @@ export default class BibmanPlugin extends Plugin {
           f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
         );
 
-        return results.sort(sortByRecency).slice(0, 100);
+        const sorted: BibSuggestion[] = results.sort(sortByRecency).slice(0, 100);
+        const exactMatch = files.some((f) => f.basename.toLowerCase() === q);
+        if (!exactMatch) {
+          sorted.push({ create: true, name: (context.query ?? "").trim() });
+        }
+        return sorted;
       }
 
-      renderSuggestion(file: TFile, el: HTMLElement) {
+      renderSuggestion(item: BibSuggestion, el: HTMLElement) {
         el.empty();
         el.addClass("bibman-suggest");
 
-        const name = el.createEl("div", { text: file.basename });
-        name.addClass("bibman-suggest-name");
+        if ("create" in item) {
+          el.addClass("bibman-suggest--create");
+          const div = el.createEl("div", { text: `Crear "${item.name}"` });
+          div.addClass("bibman-suggest-name");
+        } else {
+          const div = el.createEl("div", { text: item.basename });
+          div.addClass("bibman-suggest-name");
+        }
       }
 
-      selectSuggestion(file: TFile, _evt: KeyboardEvent | MouseEvent): void {
+      selectSuggestion(item: BibSuggestion, _evt: KeyboardEvent | MouseEvent): void {
         // Enter / click → cursor after }}
         // Tab is handled by the keydown interceptor above; this path is never Tab.
-        this._insert(file, /* tabMode */ false);
+        if ("create" in item) {
+          this._createAndInsert(item.name, /* tabMode */ false);
+        } else {
+          this._insert(item.basename, /* tabMode */ false);
+        }
       }
     })(this.app, this);
     this.registerEditorSuggest(this.bibSuggest!);
@@ -624,7 +681,17 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
     if (msg.page != null) fm["pages"] = msg.page;
   });
 
-  new Notice(`Bibman: frontmatter actualizado desde DOI.`);
+  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
+    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
+    try {
+      await app.fileManager.renameFile(file, newPath);
+      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
+    } catch (err) {
+      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
+    }
+  } else {
+    new Notice(`Bibman: frontmatter actualizado desde DOI.`);
+  }
 }
 
 // ── DOI input modal ───────────────────────────────────────────────────────────
