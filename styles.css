@@ -26,6 +26,8 @@
   color: var(--link-color, var(--text-accent));
   vertical-align: super;
   line-height: 0;
+  left: -0.5ch;
+  position: relative;
 }
 
 /* Triple-brace rendered references are plain inline elements and should

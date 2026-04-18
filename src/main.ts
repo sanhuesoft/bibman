@@ -400,6 +400,12 @@ export default class BibmanPlugin extends Plugin {
       name: "Fill frontmatter from DOI",
       callback: () => new DoiInputModal(this.app, this).open(),
     });
+
+    this.addCommand({
+      id: "fill-frontmatter-from-isbn",
+      name: "Fill frontmatter from ISBN",
+      callback: () => new IsbnInputModal(this.app, this).open(),
+    });
   }
 
   onunload(): void {
@@ -511,8 +517,27 @@ export default class BibmanPlugin extends Plugin {
             sup.dataset.bibkey = key;
             if (pages) sup.dataset.bibpages = pages;
             sup.dataset.bibvariant = "double";
-            sup.textContent = "[REF]";
-            frags.push(sup);
+            sup.textContent = "[R]";
+            // Wrap the preceding word + sup in a nowrap span so the
+            // superscript never starts a new line separated from its word.
+            const prevFrag = frags.length > 0 ? frags[frags.length - 1] : null;
+            let wordTail = "";
+            if (typeof prevFrag === "string") {
+              const m = prevFrag.match(/(\S+\s*)$/);
+              if (m) {
+                wordTail = m[1]!;
+                frags[frags.length - 1] = prevFrag.slice(0, prevFrag.length - wordTail.length);
+              }
+            }
+            if (wordTail) {
+              const wrapper = document.createElement("span");
+              wrapper.style.whiteSpace = "nowrap";
+              wrapper.appendChild(document.createTextNode(wordTail));
+              wrapper.appendChild(sup);
+              frags.push(wrapper);
+            } else {
+              frags.push(sup);
+            }
           }
 
           cursor = match.index + match[0].length;
@@ -584,9 +609,9 @@ export default class BibmanPlugin extends Plugin {
         const n = keyOrder.get(key)!;
         // Keep citations as a generic reference marker — no numbering
         if (cite.dataset.bibvariant === "triple") {
-          cite.textContent = "[Referencia]";
+          cite.textContent = "Referencia";
         } else {
-          cite.textContent = "[REF]";
+          cite.textContent = "[R]";
         }
       }
     }
@@ -738,6 +763,154 @@ class DoiInputModal extends Modal {
     const doi = normalizeDoi(raw);
     this.close();
     await fillFrontmatterFromDoi(this.app, doi);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+// ── ISBN helpers ──────────────────────────────────────────────────────────────
+
+/** Strips spaces and hyphens from a raw ISBN string. */
+function normalizeIsbn(raw: string): string {
+  return raw.trim().replace(/[\s\-]/g, "");
+}
+
+interface OpenLibrarySearchDoc {
+  title?: string;
+  author_name?: string[];
+  first_publish_year?: number;
+  publisher?: string[];
+}
+
+/**
+ * Converts a full name to APA short format: "Last, F." or "Last, F. M."
+ * Handles both "First Last" and "Last, First" input forms.
+ */
+function formatAuthorApa(name: string): string {
+  const trimmed = name.trim();
+  let last: string;
+  let givenParts: string[];
+
+  if (trimmed.includes(",")) {
+    // Already "Last, First [Middle]"
+    const commaIdx = trimmed.indexOf(",");
+    last = trimmed.slice(0, commaIdx).trim();
+    givenParts = trimmed.slice(commaIdx + 1).trim().split(/\s+/).filter(Boolean);
+  } else {
+    // "First [Middle] Last"
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0]!;
+    last = parts[parts.length - 1]!;
+    givenParts = parts.slice(0, -1);
+  }
+
+  const initials = givenParts.map((p) => `${p[0]!.toUpperCase()}.`).join(" ");
+  return initials ? `${last}, ${initials}` : last;
+}
+
+async function fetchIsbnMetadata(isbn: string): Promise<OpenLibrarySearchDoc> {
+  const encoded = encodeURIComponent(isbn);
+  const resp = await requestUrl({
+    url: `https://openlibrary.org/search.json?isbn=${encoded}&fields=title,author_name,first_publish_year,publisher&limit=1`,
+    method: "GET",
+    headers: { "User-Agent": "bibman-obsidian-plugin/1.0" },
+  });
+  if (resp.status !== 200) throw new Error(`Open Library returned HTTP ${resp.status}`);
+  const body = resp.json as { numFound?: number; docs?: OpenLibrarySearchDoc[] };
+  if (!body.docs || body.docs.length === 0)
+    throw new Error("No se encontró ningún libro con ese ISBN.");
+  return body.docs[0]!;
+}
+
+async function fillFrontmatterFromIsbn(app: App, isbn: string): Promise<void> {
+  const file = app.workspace.getActiveFile();
+  if (!file) {
+    new Notice("Bibman: no hay ninguna nota activa.");
+    return;
+  }
+
+  let info: OpenLibrarySearchDoc;
+  try {
+    info = await fetchIsbnMetadata(isbn);
+  } catch (err) {
+    new Notice(`Bibman: error al obtener el ISBN.\n${String(err)}`);
+    return;
+  }
+
+  await app.fileManager.processFrontMatter(file, (fm) => {
+    fm["type"] = "book";
+
+    if (info.title) fm["title"] = info.title;
+
+    if (Array.isArray(info.author_name) && info.author_name.length > 0) {
+      fm["authors"] = info.author_name.filter(Boolean).map(formatAuthorApa);
+    }
+
+    if (info.first_publish_year != null) fm["year"] = info.first_publish_year;
+
+    if (Array.isArray(info.publisher) && info.publisher.length > 0) {
+      fm["publisher"] = info.publisher[0]!;
+    }
+  });
+
+  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
+    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
+    try {
+      await app.fileManager.renameFile(file, newPath);
+      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
+    } catch (err) {
+      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
+    }
+  } else {
+    new Notice(`Bibman: frontmatter actualizado desde ISBN.`);
+  }
+}
+
+// ── ISBN input modal ──────────────────────────────────────────────────────────
+
+class IsbnInputModal extends Modal {
+  private input!: HTMLInputElement;
+
+  constructor(app: App, private readonly plugin: BibmanPlugin) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Completar frontmatter desde ISBN" });
+
+    const desc = contentEl.createEl("p");
+    desc.style.color = "var(--text-muted)";
+    desc.style.fontSize = "0.9em";
+    desc.textContent =
+      "Introduce el ISBN-10 o ISBN-13 del libro (con o sin guiones).";
+
+    this.input = contentEl.createEl("input", { type: "text" });
+    this.input.placeholder = "978-0-06-112008-4";
+    this.input.style.width = "100%";
+    this.input.style.marginTop = "8px";
+    this.input.style.marginBottom = "12px";
+
+    this.input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") void this.submit();
+    });
+
+    const btn = contentEl.createEl("button", { text: "Completar" });
+    btn.style.width = "100%";
+    btn.addEventListener("click", () => void this.submit());
+
+    setTimeout(() => this.input.focus(), 50);
+  }
+
+  private async submit(): Promise<void> {
+    const raw = this.input.value;
+    if (!raw.trim()) return;
+    const isbn = normalizeIsbn(raw);
+    this.close();
+    await fillFrontmatterFromIsbn(this.app, isbn);
   }
 
   onClose(): void {
