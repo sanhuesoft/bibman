@@ -5,6 +5,8 @@ import {
   Modal,
   Notice,
   Plugin,
+  PluginSettingTab,
+  Setting,
   TFile,
   Editor,
   EditorSuggest,
@@ -42,6 +44,18 @@ interface BibEntry {
   title?: string;
   year?: string | number;
 }
+
+// ── Plugin settings ───────────────────────────────────────────────────────────
+
+interface BibmanSettings {
+  updateRefsOnRename: boolean;
+  moveNewNoteToBiblio: boolean;
+}
+
+const DEFAULT_SETTINGS: BibmanSettings = {
+  updateRefsOnRename: true,
+  moveNewNoteToBiblio: true,
+};
 
 // ── Render child: hover popup ─────────────────────────────────────────────────
 
@@ -212,12 +226,36 @@ export default class BibmanPlugin extends Plugin {
   private readonly sweepTimers = new Map<string, number>();
   /** basename → last-used timestamp (ms). Persisted in plugin data. */
   recentlyUsed: Map<string, number> = new Map();
+  settings: BibmanSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
-    const saved = await this.loadData() as { recentlyUsed?: Record<string, number> } | null;
+    const saved = await this.loadData() as { recentlyUsed?: Record<string, number>; updateRefsOnRename?: boolean; moveNewNoteToBiblio?: boolean } | null;
     if (saved?.recentlyUsed) {
       this.recentlyUsed = new Map(Object.entries(saved.recentlyUsed));
     }
+    this.settings = {
+      updateRefsOnRename: saved?.updateRefsOnRename ?? DEFAULT_SETTINGS.updateRefsOnRename,
+      moveNewNoteToBiblio: saved?.moveNewNoteToBiblio ?? DEFAULT_SETTINGS.moveNewNoteToBiblio,
+    };
+
+    this.addSettingTab(new BibmanSettingTab(this.app, this));
+
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (!(file instanceof TFile)) return;
+        if (!this.settings.updateRefsOnRename) return;
+        const oldFolder = oldPath.substring(0, oldPath.lastIndexOf("/"));
+        const newFolder = file.parent?.path ?? "";
+        if (oldFolder !== BIBLIO_FOLDER || newFolder !== BIBLIO_FOLDER) return;
+        const oldBasename = oldPath
+          .substring(oldPath.lastIndexOf("/") + 1)
+          .replace(/\.md$/, "");
+        const newBasename = file.basename;
+        if (oldBasename === newBasename) return;
+        void this.propagateRename(oldBasename, newBasename);
+      }),
+    );
+
     this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
     this.registerEditorExtension(citationEditorPlugin);
     // Register an editor suggest that triggers on "{{" and lists files
@@ -298,7 +336,8 @@ export default class BibmanPlugin extends Plugin {
 
       /** Creates the file in Bibliografía if absent, then immediately inserts the citation. */
       private _createAndInsert(name: string, tabMode: boolean): void {
-        const path = `${BIBLIO_FOLDER}/${name}.md`;
+        const useBiblio = this.plugin.settings.moveNewNoteToBiblio;
+        const path = useBiblio ? `${BIBLIO_FOLDER}/${name}.md` : `${name}.md`;
         const existing = this.app.vault.getAbstractFileByPath(path);
         const openFile = (file: TFile) =>
           void this.app.workspace.getLeaf("tab").openFile(file);
@@ -423,7 +462,19 @@ export default class BibmanPlugin extends Plugin {
 
   recordUsage(basename: string): void {
     this.recentlyUsed.set(basename, Date.now());
-    void this.saveData({ recentlyUsed: Object.fromEntries(this.recentlyUsed) });
+    void this.saveData({
+      recentlyUsed: Object.fromEntries(this.recentlyUsed),
+      updateRefsOnRename: this.settings.updateRefsOnRename,
+      moveNewNoteToBiblio: this.settings.moveNewNoteToBiblio,
+    });
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData({
+      recentlyUsed: Object.fromEntries(this.recentlyUsed),
+      updateRefsOnRename: this.settings.updateRefsOnRename,
+      moveNewNoteToBiblio: this.settings.moveNewNoteToBiblio,
+    });
   }
 
   /**
@@ -453,6 +504,56 @@ export default class BibmanPlugin extends Plugin {
           ? (fmr["year"] as string | number)
           : undefined,
     };
+  }
+
+  // ── Rename propagation ─────────────────────────────────────────────────────
+
+  /**
+   * Scans all markdown files in the vault and replaces every occurrence of
+   * {{oldKey}} / {{oldKey:pages}} / {{{oldKey}}} / {{{oldKey:pages}}} with
+   * the new key, mirroring Obsidian's native wikilink-rename behaviour.
+   */
+  private async propagateRename(oldKey: string, newKey: string): Promise<void> {
+    const escaped = oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Triple braces must be matched first/separately to avoid partial overlap.
+    const reTriple = new RegExp(
+      `\\{\\{\\{${escaped}((?::[^}]+?)?)\\}\\}\\}`,
+      "g",
+    );
+    // Double braces: use negative lookahead/lookbehind to exclude triple-brace.
+    const reDouble = new RegExp(
+      `(?<!\\{)\\{\\{(?!\\{)${escaped}((?::[^}]+?)?)\\}\\}(?!\\})`,
+      "g",
+    );
+
+    const markdownFiles = this.app.vault.getMarkdownFiles();
+    let count = 0;
+
+    for (const file of markdownFiles) {
+      const content = await this.app.vault.read(file);
+      // Quick pre-check to avoid unnecessary regex work.
+      if (!content.includes(`{{${oldKey}`) && !content.includes(`{{{${oldKey}`)) continue;
+
+      let updated = content.replace(
+        reTriple,
+        (_, pages: string | undefined) => `{{{${newKey}${pages ?? ""}}}}`,
+      );
+      updated = updated.replace(
+        reDouble,
+        (_, pages: string | undefined) => `{{${newKey}${pages ?? ""}}}`,
+      );
+
+      if (updated !== content) {
+        await this.app.vault.modify(file, updated);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      new Notice(
+        `Bibman: "${oldKey}" → "${newKey}" actualizado en ${count} nota${count !== 1 ? "s" : ""}.`,
+      );
+    }
   }
 
   // ── Post-processor (reading mode) ──────────────────────────────────────────
@@ -915,5 +1016,53 @@ class IsbnInputModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty();
+  }
+}
+
+// ── Settings tab ──────────────────────────────────────────────────────────────
+
+class BibmanSettingTab extends PluginSettingTab {
+  constructor(
+    app: App,
+    private readonly plugin: BibmanPlugin,
+  ) {
+    super(app, plugin);
+  }
+
+  display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    new Setting(containerEl)
+      .setName("Mover nueva nota a Bibliografía")
+      .setDesc(
+        "Al crear una referencia nueva desde el menú de autocompletado ({{...}}), " +
+          "la nota se crea directamente en la carpeta Bibliografía. " +
+          "Si se desactiva, la nota se crea en la raíz del vault.",
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.moveNewNoteToBiblio)
+          .onChange(async (value) => {
+            this.plugin.settings.moveNewNoteToBiblio = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Actualizar referencias al renombrar")
+      .setDesc(
+        "Cuando se renombra un archivo en la carpeta de Bibliografía, " +
+          "actualiza automáticamente todas las referencias {{clave}} y {{{clave}}} " +
+          "(con o sin número de página) en todas las notas del vault.",
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.updateRefsOnRename)
+          .onChange(async (value) => {
+            this.plugin.settings.updateRefsOnRename = value;
+            await this.plugin.saveSettings();
+          }),
+      );
   }
 }
