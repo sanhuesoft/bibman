@@ -445,6 +445,14 @@ export default class BibmanPlugin extends Plugin {
       name: "Fill frontmatter from ISBN",
       callback: () => new IsbnInputModal(this.app, this).open(),
     });
+
+    // ── [EXPERIMENTAL] Update references command – remove this block to disable ──
+    this.addCommand({
+      id: "update-references",
+      name: "Update references",
+      editorCallback: (editor) => runUpdateReferences(editor),
+    });
+    // ── end experimental block ────────────────────────────────────────────────
   }
 
   onunload(): void {
@@ -718,6 +726,106 @@ export default class BibmanPlugin extends Plugin {
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// [EXPERIMENTAL] Convert parenthetical citations → bibman syntax
+//
+// To remove this feature entirely:
+//   1. Delete this whole section (down to the matching ═══ comment).
+//   2. Remove the "Update references" addCommand block in onload().
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Converts inline citations from the legacy format
+ *   word (Key).
+ *   word (Key, pages).
+ * to the bibman format
+ *   word. {{Key}}
+ *   word. {{Key:pages}}
+ *
+ * Returns the transformed string and the number of replacements made.
+ *
+ * The key is expected to match: one capital letter, then letters
+ * (including accented), then a 4-digit year, optionally followed by
+ * a single lowercase letter — e.g. García2020, Smith1999b.
+ *
+ * Handled formats:
+ *   " (Key)."                →  ". {{Key}}"
+ *   " (Key, pages)."         →  ". {{Key:pages}}"
+ *   " (Author, year)."       →  ". {{AuthorYear}}"
+ *   " (Author, year, pages)."→  ". {{AuthorYear:pages}}"
+ *   ". ^[Key]"                →  ". {{Key}}"
+ *   ". ^[Key, pages]"         →  ". {{Key:pages}}"
+ */
+function convertParentheticalCitations(
+  content: string,
+): { result: string; count: number } {
+  const KEY = String.raw`[A-ZÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ][A-Za-záéíóúÁÉÍÓÚàèìòùäëïöüñÑ\w]*\d{4}[a-z]?`;
+  // Author-only part (no trailing digits): used for "Autor, año" split format
+  const AUTHOR = String.raw`[A-ZÁÉÍÓÚÀÈÌÒÙÄËÏÖÜÑ][A-Za-záéíóúÁÉÍÓÚàèìòùäëïöüñÑ]+`;
+
+  // Format 1: <space>(Key). or <space>(Key, pages).
+  const reParens = new RegExp(
+    String.raw`[ \t]\((${KEY})(?:,\s*([^)]+?))?\)\.`,
+    "g",
+  );
+
+  // Format 2: . ^[Key] or . ^[Key, pages]
+  const reFootnote = new RegExp(
+    String.raw`\. \^\[(${KEY})(?:,\s*([^\]]+?))?\]`,
+    "g",
+  );
+
+  // Format 3: (Autor, año). or (Autor, año, páginas).
+  // Distinguishable from Format 1 because the key has no year attached.
+  const reAuthorYear = new RegExp(
+    String.raw`[ \t]\((${AUTHOR}),\s*(\d{4}[a-z]?)(?:,\s*([^)]+?))?\)\.`,
+    "g",
+  );
+
+  const replacer = (_match: string, key: string, pages: string | undefined): string =>
+    pages ? `. {{${key}:${pages.trim()}}}` : `. {{${key}}}`;
+
+  let count = 0;
+  const countingReplacer = (match: string, key: string, pages: string | undefined): string => {
+    count++;
+    return replacer(match, key, pages);
+  };
+
+  // Format 3 needs its own replacer to merge author + year into the key
+  const authorYearReplacer = (
+    _match: string,
+    author: string,
+    year: string,
+    pages: string | undefined,
+  ): string => {
+    count++;
+    const key = `${author}${year}`;
+    return pages ? `. {{${key}:${pages.trim()}}}` : `. {{${key}}}`;
+  };
+
+  const step1 = content.replace(reAuthorYear, authorYearReplacer);
+  const step2 = step1.replace(reParens, countingReplacer);
+  const result = step2.replace(reFootnote, countingReplacer);
+  return { result, count };
+}
+
+function runUpdateReferences(editor: Editor): void {
+  const content = editor.getValue();
+  const { result, count } = convertParentheticalCitations(content);
+  if (count === 0) {
+    new Notice("Bibman: no se encontraron referencias para convertir.");
+    return;
+  }
+  editor.setValue(result);
+  new Notice(
+    `Bibman: ${count} referencia${count !== 1 ? "s" : ""} convertida${count !== 1 ? "s" : ""}.`,
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// end [EXPERIMENTAL] Convert parenthetical citations
+// ════════════════════════════════════════════════════════════════════════════
 
 // ── DOI helpers ───────────────────────────────────────────────────────────────
 
