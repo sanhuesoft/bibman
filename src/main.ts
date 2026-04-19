@@ -756,6 +756,8 @@ export default class BibmanPlugin extends Plugin {
  *   " (Author, year, pages)."→  ". {{AuthorYear:pages}}"
  *   ". ^[Key]"                →  ". {{Key}}"
  *   ". ^[Key, pages]"         →  ". {{Key:pages}}"
+ *   ". ^[Author, year]"       →  ". {{AuthorYear}}"
+ *   ". ^[Author, year, pages]"→  ". {{AuthorYear:pages}}"
  */
 function convertParentheticalCitations(
   content: string,
@@ -776,6 +778,12 @@ function convertParentheticalCitations(
     "g",
   );
 
+  // Format 4: . ^[Author, year] or . ^[Author, year, pages]
+  const reFootnoteAuthorYear = new RegExp(
+    String.raw`\. \^\[(${AUTHOR}),\s*(\d{4}[a-z]?)(?:,\s*([^\]]+?))?\]`,
+    "g",
+  );
+
   // Format 3: (Autor, año). or (Autor, año, páginas).
   // Distinguishable from Format 1 because the key has no year attached.
   const reAuthorYear = new RegExp(
@@ -792,7 +800,7 @@ function convertParentheticalCitations(
     return replacer(match, key, pages);
   };
 
-  // Format 3 needs its own replacer to merge author + year into the key
+  // Formats 3 & 4 need their own replacer to merge author + year into the key
   const authorYearReplacer = (
     _match: string,
     author: string,
@@ -804,9 +812,10 @@ function convertParentheticalCitations(
     return pages ? `. {{${key}:${pages.trim()}}}` : `. {{${key}}}`;
   };
 
-  const step1 = content.replace(reAuthorYear, authorYearReplacer);
-  const step2 = step1.replace(reParens, countingReplacer);
-  const result = step2.replace(reFootnote, countingReplacer);
+  const step1 = content.replace(reFootnoteAuthorYear, authorYearReplacer);
+  const step2 = step1.replace(reAuthorYear, authorYearReplacer);
+  const step3 = step2.replace(reParens, countingReplacer);
+  const result = step3.replace(reFootnote, countingReplacer);
   return { result, count };
 }
 
