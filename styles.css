@@ -88,6 +88,18 @@
   font-style: italic;
 }
 
+.bibman-suggest--placeholder .bibman-suggest-name {
+  color: var(--text-muted);
+}
+
+.bibman-suggest-badge {
+  font-size: 0.75em;
+  color: var(--text-faint);
+  font-style: italic;
+  margin-left: 6px;
+  opacity: 0.8;
+}
+
 .bibman-suggest-name {
   font-size: 0.95em;
   line-height: 1.2;

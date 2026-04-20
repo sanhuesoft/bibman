@@ -216,7 +216,7 @@ const citationEditorPlugin = ViewPlugin.fromClass(
 
 // ── Suggest item type ────────────────────────────────────────────────────────
 
-type BibSuggestion = TFile | { create: true; name: string };
+type BibSuggestion = TFile | { create: true; name: string } | { placeholder: true; name: string };
 
 // ── Main plugin ───────────────────────────────────────────────────────────────
 
@@ -227,6 +227,9 @@ export default class BibmanPlugin extends Plugin {
   /** basename → last-used timestamp (ms). Persisted in plugin data. */
   recentlyUsed: Map<string, number> = new Map();
   settings: BibmanSettings = { ...DEFAULT_SETTINGS };
+  /** Keys found in {{...}} across the vault that lack a Bibliografía note. */
+  placeholderKeys: Set<string> = new Set();
+  private _placeholderRebuildTimer: number | undefined;
 
   async onload(): Promise<void> {
     const saved = await this.loadData() as { recentlyUsed?: Record<string, number>; updateRefsOnRename?: boolean; moveNewNoteToBiblio?: boolean } | null;
@@ -290,6 +293,8 @@ export default class BibmanPlugin extends Plugin {
           e.stopPropagation();
           if ("create" in item) {
             this._createAndInsert(item.name, /* tabMode */ true);
+          } else if ("placeholder" in item) {
+            this._insert(item.name, /* tabMode */ true);
           } else {
             this._insert(item.basename, /* tabMode */ true);
           }
@@ -392,16 +397,38 @@ export default class BibmanPlugin extends Plugin {
           return a.basename.localeCompare(b.basename);
         };
 
+        const existingBasenames = new Set(files.map((f) => f.basename.toLowerCase()));
+        // Dangling placeholder keys: used in {{...}} but no backing file in Bibliografía
+        const placeholderSuggestions: BibSuggestion[] = [];
+        for (const key of this.plugin.placeholderKeys) {
+          const kl = key.toLowerCase();
+          if (existingBasenames.has(kl)) continue;
+          if (q.length === 0 || kl.includes(q)) {
+            placeholderSuggestions.push({ placeholder: true, name: key });
+          }
+        }
+        placeholderSuggestions.sort((a, b) =>
+          (a as { placeholder: true; name: string }).name.localeCompare(
+            (b as { placeholder: true; name: string }).name,
+          ),
+        );
+
         if (q.length === 0) {
-          return files.slice().sort(sortByRecency).slice(0, 100);
+          return [...files.slice().sort(sortByRecency), ...placeholderSuggestions].slice(0, 100);
         }
 
         const results = files.filter((f) =>
           f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
         );
 
-        const sorted: BibSuggestion[] = results.sort(sortByRecency).slice(0, 100);
-        const exactMatch = files.some((f) => f.basename.toLowerCase() === q);
+        const sorted: BibSuggestion[] = [
+          ...results.sort(sortByRecency),
+          ...placeholderSuggestions,
+        ].slice(0, 100);
+
+        const exactMatch =
+          files.some((f) => f.basename.toLowerCase() === q) ||
+          [...this.plugin.placeholderKeys].some((k) => k.toLowerCase() === q);
         if (!exactMatch) {
           sorted.push({ create: true, name: (context.query ?? "").trim() });
         }
@@ -416,6 +443,12 @@ export default class BibmanPlugin extends Plugin {
           el.addClass("bibman-suggest--create");
           const div = el.createEl("div", { text: `Crear "${item.name}"` });
           div.addClass("bibman-suggest-name");
+        } else if ("placeholder" in item) {
+          el.addClass("bibman-suggest--placeholder");
+          const div = el.createEl("div", { text: item.name });
+          div.addClass("bibman-suggest-name");
+          const badge = el.createEl("span", { text: "sin nota" });
+          badge.addClass("bibman-suggest-badge");
         } else {
           const div = el.createEl("div", { text: item.basename });
           div.addClass("bibman-suggest-name");
@@ -427,12 +460,32 @@ export default class BibmanPlugin extends Plugin {
         // Tab is handled by the keydown interceptor above; this path is never Tab.
         if ("create" in item) {
           this._createAndInsert(item.name, /* tabMode */ false);
+        } else if ("placeholder" in item) {
+          this._insert(item.name, /* tabMode */ false);
         } else {
           this._insert(item.basename, /* tabMode */ false);
         }
       }
     })(this.app, this);
     this.registerEditorSuggest(this.bibSuggest!);
+
+    // Build the placeholder index on startup and keep it updated
+    void this.rebuildPlaceholderIndex();
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && file.extension === "md")
+          this.schedulePlaceholderRebuild();
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("create", () => this.schedulePlaceholderRebuild()),
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", () => this.schedulePlaceholderRebuild()),
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", () => this.schedulePlaceholderRebuild()),
+    );
 
     this.addCommand({
       id: "fill-frontmatter-from-doi",
@@ -446,6 +499,35 @@ export default class BibmanPlugin extends Plugin {
       callback: () => new IsbnInputModal(this.app, this).open(),
     });
 
+    this.addCommand({
+      id: "open-or-create-reference-at-cursor",
+      name: "Abrir o crear referencia en cursor",
+      hotkeys: [{ modifiers: ["Mod"], key: "Enter" }],
+      editorCallback: (editor: Editor) => {
+        const cursor = editor.getCursor();
+        const line = editor.getLine(cursor.line);
+        const re = /\{\{\{([^}:]+?)(?::[^}]+?)?\}\}\}|\{\{([^}:]+?)(?::[^}]+?)?\}\}/g;
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(line)) !== null) {
+          const start = match.index;
+          const end = start + match[0].length;
+          if (cursor.ch >= start && cursor.ch <= end) {
+            const key = ((match[1] ?? match[2]) ?? "").trim();
+            if (!key) continue;
+            const path = `${BIBLIO_FOLDER}/${key}.md`;
+            const file = this.app.vault.getAbstractFileByPath(path);
+            if (file instanceof TFile) {
+              void this.app.workspace.getLeaf("window").openFile(file);
+            } else {
+              new ConfirmCreateModal(this.app, key, this).open();
+            }
+            return;
+          }
+        }
+        new Notice("Bibman: el cursor no está dentro de una referencia {{\u2026}}.");
+      },
+    });
+
     // ── [EXPERIMENTAL] Update references command – remove this block to disable ──
     this.addCommand({
       id: "update-references",
@@ -457,7 +539,12 @@ export default class BibmanPlugin extends Plugin {
 
   onunload(): void {
     for (const timer of this.sweepTimers.values()) clearTimeout(timer);
-    this.sweepTimers.clear();    // Clean up the keydown listener from the suggest
+    this.sweepTimers.clear();
+    if (this._placeholderRebuildTimer !== undefined) {
+      window.clearTimeout(this._placeholderRebuildTimer);
+      this._placeholderRebuildTimer = undefined;
+    }
+    // Clean up the keydown listener from the suggest
     if (this.bibSuggest) {
       const s = this.bibSuggest as unknown as { _keydownHandler: ((e: KeyboardEvent) => void) | null };
       if (s._keydownHandler) {
@@ -483,6 +570,45 @@ export default class BibmanPlugin extends Plugin {
       updateRefsOnRename: this.settings.updateRefsOnRename,
       moveNewNoteToBiblio: this.settings.moveNewNoteToBiblio,
     });
+  }
+
+  private schedulePlaceholderRebuild(): void {
+    if (this._placeholderRebuildTimer !== undefined)
+      window.clearTimeout(this._placeholderRebuildTimer);
+    this._placeholderRebuildTimer = window.setTimeout(() => {
+      this._placeholderRebuildTimer = undefined;
+      void this.rebuildPlaceholderIndex();
+    }, 1500);
+  }
+
+  async rebuildPlaceholderIndex(): Promise<void> {
+    const folderPrefix = `${BIBLIO_FOLDER}/`;
+    const existingKeys = new Set(
+      this.app.vault
+        .getFiles()
+        .filter((f) => f.path.startsWith(folderPrefix) && f.extension === "md")
+        .map((f) => f.basename.toLowerCase()),
+    );
+    const re = /\{\{\{([^}:]+?)(?::[^}]+?)?\}\}\}|\{\{([^}:]+?)(?::[^}]+?)?\}\}/g;
+    const found = new Set<string>();
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      let content: string;
+      try {
+        content = await this.app.vault.cachedRead(file);
+      } catch {
+        continue;
+      }
+      if (!content.includes("{{")) continue;
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(content)) !== null) {
+        const key = ((m[1] ?? m[2]) ?? "").trim();
+        if (key && !existingKeys.has(key.toLowerCase())) {
+          found.add(key);
+        }
+      }
+    }
+    this.placeholderKeys = found;
   }
 
   /**
@@ -1129,6 +1255,58 @@ class IsbnInputModal extends Modal {
     const isbn = normalizeIsbn(raw);
     this.close();
     await fillFrontmatterFromIsbn(this.app, isbn);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+// ── Confirm create modal ──────────────────────────────────────────────────────
+
+class ConfirmCreateModal extends Modal {
+  constructor(
+    app: App,
+    private readonly key: string,
+    private readonly plugin: BibmanPlugin,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Crear referencia" });
+    contentEl.createEl("p", {
+      text: `La nota "${this.key}" no existe. ¿Deseas crearla en ${BIBLIO_FOLDER}?`,
+    });
+
+    const btnRow = contentEl.createEl("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.justifyContent = "flex-end";
+    btnRow.style.marginTop = "16px";
+
+    const cancelBtn = btnRow.createEl("button", { text: "Cancelar" });
+    cancelBtn.addEventListener("click", () => this.close());
+
+    const createBtn = btnRow.createEl("button", { text: "Crear" });
+    createBtn.addClass("mod-cta");
+    createBtn.addEventListener("click", () => {
+      this.close();
+      void this.createAndOpen();
+    });
+  }
+
+  private async createAndOpen(): Promise<void> {
+    const useBiblio = this.plugin.settings.moveNewNoteToBiblio;
+    const path = useBiblio ? `${BIBLIO_FOLDER}/${this.key}.md` : `${this.key}.md`;
+    try {
+      const file = await this.plugin.app.vault.create(path, "");
+      void this.plugin.app.workspace.getLeaf("window").openFile(file);
+    } catch (err) {
+      new Notice(`Bibman: error al crear la nota.\n${String(err)}`);
+    }
   }
 
   onClose(): void {
