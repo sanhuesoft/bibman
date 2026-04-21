@@ -427,8 +427,7 @@ export default class BibmanPlugin extends Plugin {
         ].slice(0, 100);
 
         const exactMatch =
-          files.some((f) => f.basename.toLowerCase() === q) ||
-          [...this.plugin.placeholderKeys].some((k) => k.toLowerCase() === q);
+          files.some((f) => f.basename.toLowerCase() === q);
         if (!exactMatch) {
           sorted.push({ create: true, name: (context.query ?? "").trim() });
         }
@@ -1009,6 +1008,37 @@ function crossrefTypeToLocal(type: string | undefined): string {
   return type;
 }
 
+/**
+ * Reads the raw frontmatter of `file` and wraps the scalar value of each
+ * listed field in double quotes if it isn't already quoted.
+ */
+async function quoteFields(app: App, file: TFile, fields: string[]): Promise<void> {
+  const content = await app.vault.read(file);
+  if (!content.startsWith("---")) return;
+  const closingIdx = content.indexOf("\n---", 3);
+  if (closingIdx === -1) return;
+  const fieldSet = new Set(fields);
+  let changed = false;
+  const newHeader = content.slice(0, closingIdx).replace(
+    /^([a-zA-Z_][a-zA-Z0-9_-]*): (.+)$/gm,
+    (match, key: string, val: string) => {
+      if (!fieldSet.has(key)) return match;
+      const trimmed = val.trim();
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      )
+        return match;
+      const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      changed = true;
+      return `${key}: "${escaped}"`;
+    },
+  );
+  if (changed) {
+    await app.vault.modify(file, newHeader + content.slice(closingIdx));
+  }
+}
+
 async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
   const file = app.workspace.getActiveFile();
   if (!file) {
@@ -1032,10 +1062,10 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
 
     if (Array.isArray(msg.author) && msg.author.length > 0) {
       fm["authors"] = msg.author.map((a) => {
-        const parts: string[] = [];
-        if (a.family) parts.push(a.family);
-        if (a.given) parts.push(a.given);
-        return parts.join(", ");
+        const last = a.family ?? "";
+        const givenParts = (a.given ?? "").trim().split(/\s+/).filter(Boolean);
+        const initials = givenParts.map((p) => `${p[0]!.toUpperCase()}.`).join(" ");
+        return initials ? `${last}, ${initials}` : last;
       });
     }
 
@@ -1049,6 +1079,8 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
     if (msg.issue != null) fm["number"] = isNaN(Number(msg.issue)) ? msg.issue : Number(msg.issue);
     if (msg.page != null) fm["pages"] = msg.page;
   });
+
+  await quoteFields(app, file, ["title", "type"]);
 
   if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
     const newPath = `${BIBLIO_FOLDER}/${file.name}`;
@@ -1198,6 +1230,8 @@ async function fillFrontmatterFromIsbn(app: App, isbn: string): Promise<void> {
       fm["publisher"] = info.publisher[0]!;
     }
   });
+
+  await quoteFields(app, file, ["title", "type", "publisher"]);
 
   if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
     const newPath = `${BIBLIO_FOLDER}/${file.name}`;
