@@ -875,14 +875,16 @@ export default class BibmanPlugin extends Plugin {
  * a single lowercase letter — e.g. García2020, Smith1999b.
  *
  * Handled formats:
- *   " (Key)."                →  ". {{Key}}"
- *   " (Key, pages)."         →  ". {{Key:pages}}"
- *   " (Author, year)."       →  ". {{AuthorYear}}"
- *   " (Author, year, pages)."→  ". {{AuthorYear:pages}}"
- *   ". ^[Key]"                →  ". {{Key}}"
- *   ". ^[Key, pages]"         →  ". {{Key:pages}}"
- *   ". ^[Author, year]"       →  ". {{AuthorYear}}"
- *   ". ^[Author, year, pages]"→  ". {{AuthorYear:pages}}"
+ *   " (Key)."                    →  ". {{Key}}"
+ *   " (Key, pages)."             →  ". {{Key:pages}}"
+ *   " (Author, year)."           →  ". {{AuthorYear}}"
+ *   " (Author, year, pages)."    →  ". {{AuthorYear:pages}}"
+ *   ". ^[Key]"                   →  ". {{Key}}"
+ *   ". ^[Key, pages]"            →  ". {{Key:pages}}"
+ *   ". ^[Author, year]"          →  ". {{AuthorYear}}"
+ *   ". ^[Author, year, pages]"   →  ". {{AuthorYear:pages}}"
+ *   " ([[Author, year]])."       →  ". {{AuthorYear}}"
+ *   " ([[Author, year, pages]])."→  ". {{AuthorYear:pages}}"
  */
 function convertParentheticalCitations(
   content: string,
@@ -916,6 +918,12 @@ function convertParentheticalCitations(
     "g",
   );
 
+  // Format 5: <space>([[Author, year]]). or <space>([[Author, year, pages]]).
+  const reWikiAuthorYear = new RegExp(
+    String.raw`[ \t]\(\[\[(${AUTHOR}),\s*(\d{4}[a-z]?)(?:,\s*([^\]]+?))?\]\]\)\.`,
+    "g",
+  );
+
   const replacer = (_match: string, key: string, pages: string | undefined): string =>
     pages ? `. {{${key}:${pages.trim()}}}` : `. {{${key}}}`;
 
@@ -925,7 +933,7 @@ function convertParentheticalCitations(
     return replacer(match, key, pages);
   };
 
-  // Formats 3 & 4 need their own replacer to merge author + year into the key
+  // Formats 3, 4 & 5 need their own replacer to merge author + year into the key
   const authorYearReplacer = (
     _match: string,
     author: string,
@@ -939,8 +947,9 @@ function convertParentheticalCitations(
 
   const step1 = content.replace(reFootnoteAuthorYear, authorYearReplacer);
   const step2 = step1.replace(reAuthorYear, authorYearReplacer);
-  const step3 = step2.replace(reParens, countingReplacer);
-  const result = step3.replace(reFootnote, countingReplacer);
+  const step3 = step2.replace(reWikiAuthorYear, authorYearReplacer);
+  const step4 = step3.replace(reParens, countingReplacer);
+  const result = step4.replace(reFootnote, countingReplacer);
   return { result, count };
 }
 
