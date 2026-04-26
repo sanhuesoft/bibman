@@ -20,10 +20,7 @@ export class ConfirmCreateModal extends Modal {
     });
 
     const btnRow = contentEl.createEl("div");
-    btnRow.style.display = "flex";
-    btnRow.style.gap = "8px";
-    btnRow.style.justifyContent = "flex-end";
-    btnRow.style.marginTop = "16px";
+    btnRow.setCssProps({ display: "flex", gap: "8px", "justify-content": "flex-end", "margin-top": "16px" });
 
     const cancelBtn = btnRow.createEl("button", { text: "Cancelar" });
     cancelBtn.addEventListener("click", () => this.close());

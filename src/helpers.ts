@@ -57,7 +57,7 @@ export function formatAuthorApa(name: string): string {
 
 /** Strips spaces and hyphens from a raw ISBN string. */
 export function normalizeIsbn(raw: string): string {
-  return raw.trim().replace(/[\s\-]/g, "");
+  return raw.trim().replace(/[\s-]/g, "");
 }
 
 /** Strips any prefix/URL and returns the bare DOI (e.g. "10.1016/j.xcrm…"). */

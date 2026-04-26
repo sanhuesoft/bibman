@@ -22,10 +22,7 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
     // with cursor-before-}} behaviour before Obsidian swallows the key.
     this._keydownHandler = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || !this.context) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chooser = (this as any).chooser as
-        | { values: BibSuggestion[]; selectedItem: number }
-        | undefined;
+      const chooser = (this as unknown as { chooser?: { values: BibSuggestion[]; selectedItem: number } }).chooser;
       if (!chooser) return;
       const item = chooser.values?.[chooser.selectedItem];
       if (!item) return;
@@ -80,7 +77,7 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
     editor.replaceRange(insertText, ctx.start, replaceEnd);
     try {
       editor.setCursor({ line: ctx.start.line, ch: cursorCh });
-    } catch (_e) {
+    } catch {
       try {
         // @ts-ignore
         editor.setCursor(ctx.start.line, cursorCh);
@@ -196,7 +193,7 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
       el.addClass("bibman-suggest--placeholder");
       const div = el.createEl("div", { text: item.name });
       div.addClass("bibman-suggest-name");
-      const badge = el.createEl("span", { text: "sin nota" });
+      const badge = el.createEl("span", { text: "Sin nota" });
       badge.addClass("bibman-suggest-badge");
     } else {
       const div = el.createEl("div", { text: item.basename });

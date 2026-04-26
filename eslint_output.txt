@@ -1,0 +1,110 @@
+Note: The tool simplified the command to ` npx eslint . 2>&1`, and this is the output of running that command instead:
+
+/Users/fabsanh/Proyectos/bibman/src/doi.ts
+   47:8   error  Unsafe member access ["type"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+   50:19  error  Unsafe member access ["title"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+   53:10  error  Unsafe member access ["authors"] on an `any` value                                                                                                                               @typescript-eslint/no-unsafe-member-access
+   62:26  error  Unsafe member access ["year"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+   65:21  error  Unsafe member access ["journal"] on an `any` value                                                                                                                               @typescript-eslint/no-unsafe-member-access
+   67:32  error  Unsafe member access ["volume"] on an `any` value                                                                                                                                @typescript-eslint/no-unsafe-member-access
+   68:31  error  Unsafe member access ["number"] on an `any` value                                                                                                                                @typescript-eslint/no-unsafe-member-access
+   69:30  error  Unsafe member access ["pages"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+   83:16  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+   97:38  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  100:5   error  Avoid setting styles directly via `element.style.color`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  101:5   error  Avoid setting styles directly via `element.style.fontSize`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties      obsidianmd/no-static-styles-assignment
+  103:7   error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  107:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  108:5   error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties     obsidianmd/no-static-styles-assignment
+  109:5   error  Avoid setting styles directly via `element.style.marginBottom`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  116:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+
+/Users/fabsanh/Proyectos/bibman/src/helpers.ts
+  60:33  error  Unnecessary escape character: \-  no-useless-escape
+
+/Users/fabsanh/Proyectos/bibman/src/isbn.ts
+   41:8   error  Unsafe member access ["type"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+   42:24  error  Unsafe member access ["title"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+   44:10  error  Unsafe member access ["authors"] on an `any` value                                                                                                                               @typescript-eslint/no-unsafe-member-access
+   46:45  error  Unsafe member access ["year"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+   48:10  error  Unsafe member access ["publisher"] on an `any` value                                                                                                                             @typescript-eslint/no-unsafe-member-access
+   63:16  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  116:8   error  Unsafe member access ["type"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+  117:8   error  Unsafe member access ["title"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+  118:31  error  Unsafe member access ["booktitle"] on an `any` value                                                                                                                             @typescript-eslint/no-unsafe-member-access
+  119:40  error  Unsafe member access ["authors"] on an `any` value                                                                                                                               @typescript-eslint/no-unsafe-member-access
+  120:34  error  Unsafe member access ["year"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+  121:27  error  Unsafe member access ["pages"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+  122:25  error  Unsafe member access ["doi"] on an `any` value                                                                                                                                   @typescript-eslint/no-unsafe-member-access
+  152:38  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  155:5   error  Avoid setting styles directly via `element.style.color`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  156:5   error  Avoid setting styles directly via `element.style.fontSize`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties      obsidianmd/no-static-styles-assignment
+  157:24  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  161:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  162:5   error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties     obsidianmd/no-static-styles-assignment
+  163:5   error  Avoid setting styles directly via `element.style.marginBottom`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  170:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  199:38  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  202:5   error  Avoid setting styles directly via `element.style.color`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  203:5   error  Avoid setting styles directly via `element.style.fontSize`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties      obsidianmd/no-static-styles-assignment
+  205:7   error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  209:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  210:5   error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties     obsidianmd/no-static-styles-assignment
+  211:5   error  Avoid setting styles directly via `element.style.marginBottom`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  218:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  230:16  error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  295:5   error  Avoid setting styles directly via `element.style.color`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  296:5   error  Avoid setting styles directly via `element.style.fontSize`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties      obsidianmd/no-static-styles-assignment
+  298:7   error  Use sentence case for UI text                                                                                                                                                    obsidianmd/ui/sentence-case
+  314:7   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  315:7   error  Avoid setting styles directly via `element.style.marginBottom`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  321:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  322:5   error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties     obsidianmd/no-static-styles-assignment
+
+/Users/fabsanh/Proyectos/bibman/src/main.ts
+   83:13  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+   89:13  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+   95:13  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+  101:13  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+  108:7   error  Don't provide a default hotkey, as they might conflict with other hotkeys the user has already set, or that are included with Obsidian by default                              obsidianmd/commands/no-default-hotkeys
+  416:32  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+  424:31  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+  436:15  error  Avoid setting styles directly via `element.style.whiteSpace`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  495:30  error  Use sentence case for UI text                                                                                                                                                  obsidianmd/ui/sentence-case
+
+/Users/fabsanh/Proyectos/bibman/src/modals.ts
+  23:5  error  Avoid setting styles directly via `element.style.display`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  24:5  error  Avoid setting styles directly via `element.style.gap`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties             obsidianmd/no-static-styles-assignment
+  25:5  error  Avoid setting styles directly via `element.style.justifyContent`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  26:5  error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties       obsidianmd/no-static-styles-assignment
+
+/Users/fabsanh/Proyectos/bibman/src/settings.ts
+  17:16  error  Use sentence case for UI text  obsidianmd/ui/sentence-case
+
+/Users/fabsanh/Proyectos/bibman/src/suggest.ts
+   26:37  error    Unsafe member access .chooser on an `any` value  @typescript-eslint/no-unsafe-member-access
+   83:14  warning  '_e' is defined but never used                   @typescript-eslint/no-unused-vars
+  199:49  error    Use sentence case for UI text                    obsidianmd/ui/sentence-case
+
+/Users/fabsanh/Proyectos/bibman/src/web.ts
+   74:8   error  Unsafe member access ["type"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+   75:8   error  Unsafe member access ["url"] on an `any` value                                                                                                                                   @typescript-eslint/no-unsafe-member-access
+   76:24  error  Unsafe member access ["title"] on an `any` value                                                                                                                                 @typescript-eslint/no-unsafe-member-access
+   77:25  error  Unsafe member access ["author"] on an `any` value                                                                                                                                @typescript-eslint/no-unsafe-member-access
+   78:31  error  Unsafe member access ["year"] on an `any` value                                                                                                                                  @typescript-eslint/no-unsafe-member-access
+  109:5   error  Avoid setting styles directly via `element.style.color`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  110:5   error  Avoid setting styles directly via `element.style.fontSize`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties      obsidianmd/no-static-styles-assignment
+  115:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+  116:5   error  Avoid setting styles directly via `element.style.marginTop`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties     obsidianmd/no-static-styles-assignment
+  117:5   error  Avoid setting styles directly via `element.style.marginBottom`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties  obsidianmd/no-static-styles-assignment
+  124:5   error  Avoid setting styles directly via `element.style.width`. Use CSS classes for better theming and maintainability. Use the `setCssProps` function to change CSS properties         obsidianmd/no-static-styles-assignment
+
+✖ 83 problems (82 errors, 1 warning)
+
+npm notice
+npm notice New minor version of npm available! 11.10.0 -> 11.13.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.13.0
+npm notice To update run: npm install -g npm@11.13.0
+npm notice
+
+Command exited with code 1%                                                     

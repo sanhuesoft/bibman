@@ -14,7 +14,7 @@ export class BibmanSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName("Mover nueva nota a Bibliografía")
+      .setName("Mover nueva nota a bibliografía")
       .setDesc(
         "Al crear una referencia nueva desde el menú de autocompletado ({{...}}), " +
           "la nota se crea directamente en la carpeta Bibliografía. " +

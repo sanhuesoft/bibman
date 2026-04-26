@@ -43,7 +43,7 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
     return;
   }
 
-  await app.fileManager.processFrontMatter(file, (fm) => {
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = crossrefTypeToLocal(msg.type);
 
     const title = msg.title?.[0] ?? "";
@@ -80,7 +80,7 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
       new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
     }
   } else {
-    new Notice(`Bibman: frontmatter actualizado desde DOI.`);
+    new Notice(`Bibman: frontmatter actualizado desde doi.`);
   }
 }
 
@@ -94,26 +94,23 @@ export class DoiInputModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Completar frontmatter desde DOI" });
+    contentEl.createEl("h2", { text: "Completar frontmatter desde doi" });
 
     const desc = contentEl.createEl("p");
-    desc.style.color = "var(--text-muted)";
-    desc.style.fontSize = "0.9em";
+    desc.setCssProps({ color: "var(--text-muted)", "font-size": "0.9em" });
     desc.textContent =
-      "Introduce el DOI en cualquier formato: solo el código, con prefijo doi:, o como URL.";
+      "Introduce el doi en cualquier formato: solo el código, con prefijo doi:, o como URL.";
 
     this.input = contentEl.createEl("input", { type: "text" });
     this.input.placeholder = "10.1016/j.xcrm.2025.101982";
-    this.input.style.width = "100%";
-    this.input.style.marginTop = "8px";
-    this.input.style.marginBottom = "12px";
+    this.input.setCssProps({ width: "100%", "margin-top": "8px", "margin-bottom": "12px" });
 
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.submit();
     });
 
     const btn = contentEl.createEl("button", { text: "Completar" });
-    btn.style.width = "100%";
+    btn.setCssProps({ width: "100%" });
     btn.addEventListener("click", () => void this.submit());
 
     setTimeout(() => this.input.focus(), 50);

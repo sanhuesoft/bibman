@@ -80,32 +80,31 @@ export class BibmanPlugin extends Plugin {
 
     this.addCommand({
       id: "fill-frontmatter-from-doi",
-      name: "Fill frontmatter from DOI",
+      name: "Fill frontmatter from doi",
       callback: () => new DoiInputModal(this.app, this).open(),
     });
 
     this.addCommand({
       id: "fill-frontmatter-from-isbn",
-      name: "Fill frontmatter from ISBN",
+      name: "Fill frontmatter from isbn",
       callback: () => new IsbnInputModal(this.app, this).open(),
     });
 
     this.addCommand({
       id: "fill-incollection-from-isbn",
-      name: "Fill frontmatter for Chapter (ISBN)",
+      name: "Fill frontmatter for chapter (isbn)",
       callback: () => new IsbnChapterInputModal(this.app, this).open(),
     });
 
     this.addCommand({
       id: "fill-frontmatter-from-web",
-      name: "Fill frontmatter from Web",
+      name: "Fill frontmatter from web",
       callback: () => new WebInputModal(this.app, this).open(),
     });
 
     this.addCommand({
       id: "open-or-create-reference-at-cursor",
       name: "Abrir o crear referencia en cursor",
-      hotkeys: [{ modifiers: ["Mod"], key: "Enter" }],
       editorCallback: (editor: Editor) => {
         const cursor = editor.getCursor();
         const line = editor.getLine(cursor.line);
@@ -320,16 +319,16 @@ export class BibmanPlugin extends Plugin {
     const fmr = fm as Record<string, unknown>;
 
     return {
-      author: typeof fmr["author"] === "string" ? (fmr["author"] as string) : undefined,
+      author: typeof fmr["author"] === "string" ? (fmr["author"]) : undefined,
       authors: Array.isArray(fmr["authors"])
-        ? (fmr["authors"] as unknown[]).filter((a) => typeof a === "string") as string[]
+        ? (fmr["authors"] as unknown[]).filter((a) => typeof a === "string")
         : Array.isArray(fmr["author"])
-        ? (fmr["author"] as unknown[]).filter((a) => typeof a === "string") as string[]
+        ? (fmr["author"] as unknown[]).filter((a) => typeof a === "string")
         : undefined,
-      title: typeof fmr["title"] === "string" ? (fmr["title"] as string) : undefined,
+      title: typeof fmr["title"] === "string" ? (fmr["title"]) : undefined,
       year:
         typeof fmr["year"] === "string" || typeof fmr["year"] === "number"
-          ? (fmr["year"] as string | number)
+          ? (fmr["year"])
           : undefined,
     };
   }
@@ -413,7 +412,7 @@ export class BibmanPlugin extends Plugin {
             span.dataset.bibkey = key;
             if (pages) span.dataset.bibpages = pages;
             span.dataset.bibvariant = "triple";
-            span.textContent = "[Referencia]";
+            span.textContent = "[referencia]";
             frags.push(span);
           } else {
             const sup = document.createElement("sup");
@@ -421,7 +420,7 @@ export class BibmanPlugin extends Plugin {
             sup.dataset.bibkey = key;
             if (pages) sup.dataset.bibpages = pages;
             sup.dataset.bibvariant = "double";
-            sup.textContent = "[R]";
+            sup.textContent = "[r]";
             const prevFrag = frags.length > 0 ? frags[frags.length - 1] : null;
             let wordTail = "";
             if (typeof prevFrag === "string") {
@@ -433,7 +432,7 @@ export class BibmanPlugin extends Plugin {
             }
             if (wordTail) {
               const wrapper = document.createElement("span");
-              wrapper.style.whiteSpace = "nowrap";
+              wrapper.setCssProps({ "white-space": "nowrap" });
               wrapper.appendChild(document.createTextNode(wordTail));
               wrapper.appendChild(sup);
               frags.push(wrapper);

@@ -37,7 +37,7 @@ async function fillFrontmatterFromIsbn(app: App, isbn: string): Promise<void> {
     return;
   }
 
-  await app.fileManager.processFrontMatter(file, (fm) => {
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "book";
     if (info.title) fm["title"] = info.title;
     if (Array.isArray(info.author_name) && info.author_name.length > 0) {
@@ -60,7 +60,7 @@ async function fillFrontmatterFromIsbn(app: App, isbn: string): Promise<void> {
       new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
     }
   } else {
-    new Notice(`Bibman: frontmatter actualizado desde ISBN.`);
+    new Notice(`Bibman: frontmatter actualizado desde isbn.`);
   }
 }
 
@@ -112,7 +112,7 @@ export async function fillFrontmatterFromChapter(
     return;
   }
 
-  await app.fileManager.processFrontMatter(file, (fm) => {
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "incollection";
     fm["title"] = chapter.title;
     if (chapter.bookTitle) fm["booktitle"] = chapter.bookTitle;
@@ -149,25 +149,22 @@ export class IsbnInputModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Completar frontmatter desde ISBN" });
+    contentEl.createEl("h2", { text: "Completar frontmatter desde isbn" });
 
     const desc = contentEl.createEl("p");
-    desc.style.color = "var(--text-muted)";
-    desc.style.fontSize = "0.9em";
-    desc.textContent = "Introduce el ISBN-10 o ISBN-13 del libro (con o sin guiones).";
+    desc.setCssProps({ color: "var(--text-muted)", "font-size": "0.9em" });
+    desc.textContent = "Introduce el isbn-10 o isbn-13 del libro (con o sin guiones).";
 
     this.input = contentEl.createEl("input", { type: "text" });
     this.input.placeholder = "978-0-06-112008-4";
-    this.input.style.width = "100%";
-    this.input.style.marginTop = "8px";
-    this.input.style.marginBottom = "12px";
+    this.input.setCssProps({ width: "100%", "margin-top": "8px", "margin-bottom": "12px" });
 
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.submit();
     });
 
     const btn = contentEl.createEl("button", { text: "Completar" });
-    btn.style.width = "100%";
+    btn.setCssProps({ width: "100%" });
     btn.addEventListener("click", () => void this.submit());
 
     setTimeout(() => this.input.focus(), 50);
@@ -196,26 +193,23 @@ export class IsbnChapterInputModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Completar frontmatter para capítulo (ISBN)" });
+    contentEl.createEl("h2", { text: "Completar frontmatter para capítulo (isbn)" });
 
     const desc = contentEl.createEl("p");
-    desc.style.color = "var(--text-muted)";
-    desc.style.fontSize = "0.9em";
+    desc.setCssProps({ color: "var(--text-muted)", "font-size": "0.9em" });
     desc.textContent =
-      "Introduce el ISBN del libro. Se buscará en CrossRef la lista de capítulos.";
+      "Introduce el isbn del libro. Se buscará en crossref la lista de capítulos.";
 
     this.input = contentEl.createEl("input", { type: "text" });
     this.input.placeholder = "978-0-06-112008-4";
-    this.input.style.width = "100%";
-    this.input.style.marginTop = "8px";
-    this.input.style.marginBottom = "12px";
+    this.input.setCssProps({ width: "100%", "margin-top": "8px", "margin-bottom": "12px" });
 
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.submit();
     });
 
     const btn = contentEl.createEl("button", { text: "Buscar capítulos" });
-    btn.style.width = "100%";
+    btn.setCssProps({ width: "100%" });
     btn.addEventListener("click", () => void this.submit());
 
     setTimeout(() => this.input.focus(), 50);
@@ -227,7 +221,7 @@ export class IsbnChapterInputModal extends Modal {
     const isbn = normalizeIsbn(raw);
     this.close();
 
-    new Notice("Bibman: buscando capítulos en CrossRef…");
+    new Notice("Bibman: buscando capítulos en crossref…");
     let chapters: CrossRefChapter[];
     try {
       chapters = await fetchChaptersByIsbn(isbn);
@@ -292,10 +286,9 @@ export class ManualChapterModal extends Modal {
     contentEl.createEl("h2", { text: "Entrada manual de capítulo" });
 
     const desc = contentEl.createEl("p");
-    desc.style.color = "var(--text-muted)";
-    desc.style.fontSize = "0.9em";
+    desc.setCssProps({ color: "var(--text-muted)", "font-size": "0.9em" });
     desc.textContent =
-      "CrossRef no encontró capítulos automáticamente. Completa los campos manualmente.";
+      "Crossref no encontró capítulos automáticamente. Completa los campos manualmente.";
 
     const fields: Record<string, HTMLInputElement> = {};
     const rows: Array<[string, string, string]> = [
@@ -311,15 +304,13 @@ export class ManualChapterModal extends Modal {
       contentEl.createEl("label", { text: label, cls: "bibman-modal-label" });
       const input = contentEl.createEl("input", { type: "text" });
       input.placeholder = placeholder;
-      input.style.width = "100%";
-      input.style.marginBottom = "8px";
+      input.setCssProps({ width: "100%", "margin-bottom": "8px" });
       fields[key] = input;
     }
 
     const btn = contentEl.createEl("button", { text: "Guardar" });
     btn.addClass("mod-cta");
-    btn.style.width = "100%";
-    btn.style.marginTop = "8px";
+    btn.setCssProps({ width: "100%", "margin-top": "8px" });
     btn.addEventListener("click", () => void this.save(fields));
 
     setTimeout(() => fields["title"]?.focus(), 50);
@@ -337,7 +328,7 @@ export class ManualChapterModal extends Modal {
       title,
       bookTitle,
       authors: authorsRaw ? authorsRaw.split("\n").map((s) => s.trim()).filter(Boolean) : [],
-      year: fields["year"]?.value.trim() ? parseInt(fields["year"]!.value.trim(), 10) : undefined,
+      year: fields["year"]?.value.trim() ? parseInt(fields["year"].value.trim(), 10) : undefined,
       pages: fields["pages"]?.value.trim() || undefined,
       doi: fields["doi"]?.value.trim() || undefined,
     };

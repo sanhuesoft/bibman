@@ -70,7 +70,7 @@ async function fillFrontmatterFromWeb(app: App, url: string): Promise<void> {
     return;
   }
 
-  await app.fileManager.processFrontMatter(file, (fm) => {
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "web";
     fm["url"] = info.url;
     if (info.title) fm["title"] = info.title;
@@ -106,22 +106,19 @@ export class WebInputModal extends Modal {
     contentEl.createEl("h2", { text: "Completar frontmatter desde URL" });
 
     const desc = contentEl.createEl("p");
-    desc.style.color = "var(--text-muted)";
-    desc.style.fontSize = "0.9em";
+    desc.setCssProps({ color: "var(--text-muted)", "font-size": "0.9em" });
     desc.textContent = "Introduce la URL de la página web.";
 
     this.input = contentEl.createEl("input", { type: "url" });
     this.input.placeholder = "https://ejemplo.com/articulo";
-    this.input.style.width = "100%";
-    this.input.style.marginTop = "8px";
-    this.input.style.marginBottom = "12px";
+    this.input.setCssProps({ width: "100%", "margin-top": "8px", "margin-bottom": "12px" });
 
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") void this.submit();
     });
 
     const btn = contentEl.createEl("button", { text: "Completar" });
-    btn.style.width = "100%";
+    btn.setCssProps({ width: "100%" });
     btn.addEventListener("click", () => void this.submit());
 
     setTimeout(() => this.input.focus(), 50);
