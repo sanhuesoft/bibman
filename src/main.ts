@@ -499,6 +499,12 @@ export default class BibmanPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "fill-frontmatter-from-web",
+      name: "Fill frontmatter from Web",
+      callback: () => new WebInputModal(this.app, this).open(),
+    });
+
+    this.addCommand({
       id: "open-or-create-reference-at-cursor",
       name: "Abrir o crear referencia en cursor",
       hotkeys: [{ modifiers: ["Mod"], key: "Enter" }],
@@ -534,6 +540,88 @@ export default class BibmanPlugin extends Plugin {
       editorCallback: (editor) => runUpdateReferences(editor),
     });
     // ── end experimental block ────────────────────────────────────────────────
+
+    // ── Frontmatter templates ─────────────────────────────────────────────────
+
+    const insertFrontmatterTemplate = (editor: Editor, view: MarkdownView, fields: Record<string, string>): void => {
+      const keys = Object.keys(fields);
+      const lines = ["---", ...keys.map((k) => `${k}: ${fields[k]}`), "---", ""];
+      const yaml = lines.join("\n");
+      const firstLine = editor.getLine(0);
+      if (firstLine === "---") {
+        new Notice("Bibman: el archivo ya tiene un bloque frontmatter.");
+        return;
+      }
+      editor.replaceRange(yaml, { line: 0, ch: 0 }, { line: 0, ch: 0 });
+      // Place cursor at the title value (after "title: ")
+      const titleIdx = keys.indexOf("title");
+      if (titleIdx !== -1) {
+        editor.setCursor({ line: 1 + titleIdx, ch: "title: ".length });
+      }
+      // Move the file to Bibliografía if needed
+      if (view.file) void this.moveFileToBiblio(view.file);
+    };
+
+    this.addCommand({
+      id: "insert-template-web",
+      name: 'Insert template for "web"',
+      editorCallback: (editor, view) =>
+        insertFrontmatterTemplate(editor, view as MarkdownView, {
+          type: "web",
+          title: "",
+          author: "",
+          year: "",
+          url: "",
+        }),
+    });
+
+    this.addCommand({
+      id: "insert-template-book",
+      name: 'Insert template for "book"',
+      editorCallback: (editor, view) =>
+        insertFrontmatterTemplate(editor, view as MarkdownView, {
+          type: "book",
+          title: "",
+          author: "",
+          year: "",
+          publisher: "",
+          edition: "",
+        }),
+    });
+
+    this.addCommand({
+      id: "insert-template-incollection",
+      name: 'Insert template for "incollection"',
+      editorCallback: (editor, view) =>
+        insertFrontmatterTemplate(editor, view as MarkdownView, {
+          type: "incollection",
+          title: "",
+          author: "",
+          booktitle: "",
+          editor: "",
+          publisher: "",
+          year: "",
+          pages: "",
+        }),
+    });
+
+    this.addCommand({
+      id: "insert-template-journal",
+      name: 'Insert template for "journal"',
+      editorCallback: (editor, view) =>
+        insertFrontmatterTemplate(editor, view as MarkdownView, {
+          type: "journal",
+          title: "",
+          author: "",
+          year: "",
+          journal: "",
+          volume: "",
+          number: "",
+          pages: "",
+          doi: "",
+          url: "",
+        }),
+    });
   }
 
   onunload(): void {
@@ -569,6 +657,23 @@ export default class BibmanPlugin extends Plugin {
       updateRefsOnRename: this.settings.updateRefsOnRename,
       moveNewNoteToBiblio: this.settings.moveNewNoteToBiblio,
     });
+  }
+
+  /**
+   * Moves `file` into the Bibliografía folder if it isn't already there
+   * and if the `moveNewNoteToBiblio` setting is enabled.
+   */
+  async moveFileToBiblio(file: TFile): Promise<void> {
+    if (!this.settings.moveNewNoteToBiblio) return;
+    const targetFolder = BIBLIO_FOLDER;
+    if (file.parent?.path === targetFolder) return;
+    const targetPath = `${targetFolder}/${file.name}`;
+    const existing = this.app.vault.getAbstractFileByPath(targetPath);
+    if (existing) {
+      new Notice(`Bibman: ya existe "${file.name}" en ${targetFolder}.`);
+      return;
+    }
+    await this.app.vault.rename(file, targetPath);
   }
 
   private schedulePlaceholderRebuild(): void {
@@ -970,6 +1075,39 @@ function runUpdateReferences(editor: Editor): void {
 // end [EXPERIMENTAL] Convert parenthetical citations
 // ════════════════════════════════════════════════════════════════════════════
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Reads the raw frontmatter of `file` and wraps the scalar value of each
+ * listed field in double quotes if it isn't already quoted.
+ */
+async function quoteFields(app: App, file: TFile, fields: string[]): Promise<void> {
+  const content = await app.vault.read(file);
+  if (!content.startsWith("---")) return;
+  const closingIdx = content.indexOf("\n---", 3);
+  if (closingIdx === -1) return;
+  const fieldSet = new Set(fields);
+  let changed = false;
+  const newHeader = content.slice(0, closingIdx).replace(
+    /^([a-zA-Z_][a-zA-Z0-9_-]*): (.+)$/gm,
+    (match, key: string, val: string) => {
+      if (!fieldSet.has(key)) return match;
+      const trimmed = val.trim();
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      )
+        return match;
+      const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      changed = true;
+      return `${key}: "${escaped}"`;
+    },
+  );
+  if (changed) {
+    await app.vault.modify(file, newHeader + content.slice(closingIdx));
+  }
+}
+
 // ── DOI helpers ───────────────────────────────────────────────────────────────
 
 /** Strips any prefix/URL and returns the bare DOI (e.g. "10.1016/j.xcrm…"). */
@@ -1015,37 +1153,6 @@ function crossrefTypeToLocal(type: string | undefined): string {
   if (type.includes("book")) return "book";
   if (type.includes("proceedings")) return "proceedings";
   return type;
-}
-
-/**
- * Reads the raw frontmatter of `file` and wraps the scalar value of each
- * listed field in double quotes if it isn't already quoted.
- */
-async function quoteFields(app: App, file: TFile, fields: string[]): Promise<void> {
-  const content = await app.vault.read(file);
-  if (!content.startsWith("---")) return;
-  const closingIdx = content.indexOf("\n---", 3);
-  if (closingIdx === -1) return;
-  const fieldSet = new Set(fields);
-  let changed = false;
-  const newHeader = content.slice(0, closingIdx).replace(
-    /^([a-zA-Z_][a-zA-Z0-9_-]*): (.+)$/gm,
-    (match, key: string, val: string) => {
-      if (!fieldSet.has(key)) return match;
-      const trimmed = val.trim();
-      if (
-        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-        (trimmed.startsWith("'") && trimmed.endsWith("'"))
-      )
-        return match;
-      const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      changed = true;
-      return `${key}: "${escaped}"`;
-    },
-  );
-  if (changed) {
-    await app.vault.modify(file, newHeader + content.slice(closingIdx));
-  }
 }
 
 async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
@@ -1298,6 +1405,153 @@ class IsbnInputModal extends Modal {
     const isbn = normalizeIsbn(raw);
     this.close();
     await fillFrontmatterFromIsbn(this.app, isbn);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+// ── Web helpers ───────────────────────────────────────────────────────────────
+
+interface WebMetadata {
+  title?: string;
+  author?: string;
+  year?: number;
+  url: string;
+}
+
+async function fetchWebMetadata(urlStr: string): Promise<WebMetadata> {
+  // Usamos un User-Agent de un navegador real para reducir bloqueos
+  const resp = await requestUrl({
+    url: urlStr,
+    method: "GET",
+    headers: { 
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "Accept-Language": "es-ES,es;q=0.9"
+    },
+  });
+
+  if (resp.status !== 200) {
+    if (resp.status === 429) throw new Error("YouTube/Web está limitando las peticiones. Intenta más tarde.");
+    throw new Error(`El servidor devolvió HTTP ${resp.status}`);
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(resp.text, "text/html");
+
+  // YouTube y otros sitios usan Open Graph (og:title) o Twitter Cards
+  const title =
+    doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
+    doc.querySelector('meta[name="twitter:title"]')?.getAttribute("content") ||
+    doc.title ||
+    undefined;
+
+  // En YouTube, el autor suele estar en og:video:tag o meta[name="author"]
+  const author =
+    doc.querySelector('meta[name="author"]')?.getAttribute("content") ||
+    doc.querySelector('link[itemprop="name"]')?.getAttribute("content") ||
+    doc.querySelector('meta[property="og:site_name"]')?.getAttribute("content") ||
+    undefined;
+
+  let year: number | undefined;
+  // Intentamos extraer la fecha de publicación de etiquetas comunes
+  const dateStr =
+    doc.querySelector('meta[property="article:published_time"]')?.getAttribute("content") ||
+    doc.querySelector('itemprop[itemprop="datePublished"]')?.getAttribute("content") ||
+    doc.querySelector('meta[name="date"]')?.getAttribute("content");
+
+  if (dateStr) {
+    const match = dateStr.match(/\d{4}/);
+    if (match) year = parseInt(match[0], 10);
+  } else if (urlStr.includes("youtube.com")) {
+    // Fallback: Si no hay fecha, a veces está en la descripción o texto
+    year = new Date().getFullYear(); // Opcional: usar el año actual para contenido web
+  }
+
+  return { title, author, year, url: urlStr };
+}
+
+async function fillFrontmatterFromWeb(app: App, url: string): Promise<void> {
+  const file = app.workspace.getActiveFile();
+  if (!file) {
+    new Notice("Bibman: no hay ninguna nota activa.");
+    return;
+  }
+
+  let info: WebMetadata;
+  try {
+    info = await fetchWebMetadata(url);
+  } catch (err) {
+    new Notice(`Bibman: error al obtener la página web.\n${String(err)}`);
+    return;
+  }
+
+  await app.fileManager.processFrontMatter(file, (fm) => {
+    fm["type"] = "web";
+    fm["url"] = info.url;
+
+    if (info.title) fm["title"] = info.title;
+    if (info.author) fm["author"] = info.author;
+    if (info.year != null) fm["year"] = info.year;
+  });
+
+  await quoteFields(app, file, ["title", "type", "author"]);
+
+  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
+    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
+    try {
+      await app.fileManager.renameFile(file, newPath);
+      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
+    } catch (err) {
+      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
+    }
+  } else {
+    new Notice(`Bibman: frontmatter actualizado desde la web.`);
+  }
+}
+
+// ── Web input modal ──────────────────────────────────────────────────────────
+
+class WebInputModal extends Modal {
+  private input!: HTMLInputElement;
+
+  constructor(app: App, private readonly plugin: BibmanPlugin) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Completar frontmatter desde URL" });
+
+    const desc = contentEl.createEl("p");
+    desc.style.color = "var(--text-muted)";
+    desc.style.fontSize = "0.9em";
+    desc.textContent = "Introduce la URL de la página web.";
+
+    this.input = contentEl.createEl("input", { type: "url" });
+    this.input.placeholder = "https://ejemplo.com/articulo";
+    this.input.style.width = "100%";
+    this.input.style.marginTop = "8px";
+    this.input.style.marginBottom = "12px";
+
+    this.input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") void this.submit();
+    });
+
+    const btn = contentEl.createEl("button", { text: "Completar" });
+    btn.style.width = "100%";
+    btn.addEventListener("click", () => void this.submit());
+
+    setTimeout(() => this.input.focus(), 50);
+  }
+
+  private async submit(): Promise<void> {
+    const raw = this.input.value;
+    if (!raw.trim()) return;
+    this.close();
+    await fillFrontmatterFromWeb(this.app, raw.trim());
   }
 
   onClose(): void {
