@@ -159,7 +159,12 @@ export class BibmanPlugin extends Plugin {
       if (titleIdx !== -1) {
         editor.setCursor({ line: 1 + titleIdx, ch: "title: ".length });
       }
-      if (view.file) void this.moveFileToBiblio(view.file);
+      if (view.file) {
+        const f = view.file;
+        if (!f.path.startsWith(`${BIBLIO_FOLDER}/`)) {
+          void this.app.fileManager.renameFile(f, `${BIBLIO_FOLDER}/${f.name}`);
+        }
+      }
     };
 
     this.addCommand({
