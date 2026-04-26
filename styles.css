@@ -105,3 +105,17 @@
   font-size: 0.95em;
   line-height: 1.2;
 }
+
+.bibman-suggest-meta {
+  display: block;
+  color: var(--text-faint);
+  font-size: 0.8em;
+  margin-top: 1px;
+}
+
+.bibman-modal-label {
+  display: block;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
