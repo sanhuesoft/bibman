@@ -1,8 +1,7 @@
 import { App, Modal, Notice, requestUrl } from "obsidian";
 import type { BibmanPlugin } from "./main";
-import { BIBLIO_FOLDER } from "./constants";
 import type { CrossRefMessage } from "./types";
-import { quoteFields, normalizeDoi } from "./helpers";
+import { quoteFields, normalizeDoi, moveAndRenameFileByCiteKey } from "./helpers";
 
 export { normalizeDoi };
 
@@ -43,6 +42,9 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
     return;
   }
 
+  let capturedAuthors: string[] = [];
+  let capturedYear: number | undefined;
+
   await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = crossrefTypeToLocal(msg.type);
 
@@ -50,16 +52,21 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
     if (title) fm["title"] = title;
 
     if (Array.isArray(msg.author) && msg.author.length > 0) {
-      fm["authors"] = msg.author.map((a) => {
+      const formatted = msg.author.map((a) => {
         const last = a.family ?? "";
         const givenParts = (a.given ?? "").trim().split(/\s+/).filter(Boolean);
         const initials = givenParts.map((p) => `${p[0]!.toUpperCase()}.`).join(" ");
         return initials ? `${last}, ${initials}` : last;
       });
+      fm["authors"] = formatted;
+      capturedAuthors = formatted;
     }
 
     const year = msg.published?.["date-parts"]?.[0]?.[0];
-    if (year != null) fm["year"] = year;
+    if (year != null) {
+      fm["year"] = year;
+      capturedYear = year;
+    }
 
     const journal = msg["container-title"]?.[0];
     if (journal) fm["journal"] = journal;
@@ -70,18 +77,8 @@ async function fillFrontmatterFromDoi(app: App, doi: string): Promise<void> {
   });
 
   await quoteFields(app, file, ["title", "type"]);
-
-  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
-    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
-    try {
-      await app.fileManager.renameFile(file, newPath);
-      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
-    } catch (err) {
-      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
-    }
-  } else {
-    new Notice(`Bibman: frontmatter actualizado desde doi.`);
-  }
+  new Notice("Bibman: frontmatter actualizado desde doi.");
+  await moveAndRenameFileByCiteKey(app, file, capturedAuthors, capturedYear);
 }
 
 export class DoiInputModal extends Modal {

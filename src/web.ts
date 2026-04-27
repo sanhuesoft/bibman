@@ -1,8 +1,7 @@
 import { App, Modal, Notice, requestUrl } from "obsidian";
 import type { BibmanPlugin } from "./main";
-import { BIBLIO_FOLDER } from "./constants";
 import type { WebMetadata } from "./types";
-import { quoteFields } from "./helpers";
+import { quoteFields, moveAndRenameFileByCiteKey } from "./helpers";
 
 async function fetchWebMetadata(urlStr: string): Promise<WebMetadata> {
   const resp = await requestUrl({
@@ -70,27 +69,27 @@ async function fillFrontmatterFromWeb(app: App, url: string): Promise<void> {
     return;
   }
 
+  let capturedAuthor: string | undefined;
+  let capturedYear: number | undefined;
+
   await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "web";
     fm["url"] = info.url;
     if (info.title) fm["title"] = info.title;
-    if (info.author) fm["author"] = info.author;
-    if (info.year != null) fm["year"] = info.year;
+    if (info.author) {
+      fm["author"] = info.author;
+      capturedAuthor = info.author;
+    }
+    if (info.year != null) {
+      fm["year"] = info.year;
+      capturedYear = info.year;
+    }
   });
 
   await quoteFields(app, file, ["title", "type", "author"]);
-
-  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
-    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
-    try {
-      await app.fileManager.renameFile(file, newPath);
-      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
-    } catch (err) {
-      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
-    }
-  } else {
-    new Notice(`Bibman: frontmatter actualizado desde la web.`);
-  }
+  new Notice("Bibman: frontmatter actualizado desde la web.");
+  const webAuthors = capturedAuthor ? [capturedAuthor] : [];
+  await moveAndRenameFileByCiteKey(app, file, webAuthors, capturedYear);
 }
 
 export class WebInputModal extends Modal {

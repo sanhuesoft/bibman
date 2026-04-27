@@ -1,8 +1,7 @@
 import { App, FuzzySuggestModal, Modal, Notice, requestUrl } from "obsidian";
 import type { BibmanPlugin } from "./main";
-import { BIBLIO_FOLDER } from "./constants";
 import type { CrossRefChapter, OpenLibrarySearchDoc } from "./types";
-import { quoteFields, formatAuthorApa, normalizeIsbn } from "./helpers";
+import { quoteFields, formatAuthorApa, normalizeIsbn, moveAndRenameFileByCiteKey } from "./helpers";
 
 export { normalizeIsbn };
 
@@ -37,31 +36,29 @@ async function fillFrontmatterFromIsbn(app: App, isbn: string): Promise<void> {
     return;
   }
 
+  let capturedAuthors: string[] = [];
+  let capturedYear: number | undefined;
+
   await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "book";
     if (info.title) fm["title"] = info.title;
     if (Array.isArray(info.author_name) && info.author_name.length > 0) {
-      fm["authors"] = info.author_name.filter(Boolean).map(formatAuthorApa);
+      const formatted = info.author_name.filter(Boolean).map(formatAuthorApa);
+      fm["authors"] = formatted;
+      capturedAuthors = formatted;
     }
-    if (info.first_publish_year != null) fm["year"] = info.first_publish_year;
+    if (info.first_publish_year != null) {
+      fm["year"] = info.first_publish_year;
+      capturedYear = info.first_publish_year;
+    }
     if (Array.isArray(info.publisher) && info.publisher.length > 0) {
       fm["publisher"] = info.publisher[0]!;
     }
   });
 
   await quoteFields(app, file, ["title", "type", "publisher"]);
-
-  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
-    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
-    try {
-      await app.fileManager.renameFile(file, newPath);
-      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
-    } catch (err) {
-      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
-    }
-  } else {
-    new Notice(`Bibman: frontmatter actualizado desde isbn.`);
-  }
+  new Notice("Bibman: frontmatter actualizado desde isbn.");
+  await moveAndRenameFileByCiteKey(app, file, capturedAuthors, capturedYear);
 }
 
 // ── CrossRef: chapters by ISBN ────────────────────────────────────────────────
@@ -112,29 +109,28 @@ export async function fillFrontmatterFromChapter(
     return;
   }
 
+  let capturedAuthors: string[] = [];
+  let capturedYear: number | undefined;
+
   await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
     fm["type"] = "incollection";
     fm["title"] = chapter.title;
     if (chapter.bookTitle) fm["booktitle"] = chapter.bookTitle;
-    if (chapter.authors.length > 0) fm["authors"] = chapter.authors;
-    if (chapter.year != null) fm["year"] = chapter.year;
+    if (chapter.authors.length > 0) {
+      fm["authors"] = chapter.authors;
+      capturedAuthors = chapter.authors;
+    }
+    if (chapter.year != null) {
+      fm["year"] = chapter.year;
+      capturedYear = chapter.year;
+    }
     if (chapter.pages) fm["pages"] = chapter.pages;
     if (chapter.doi) fm["doi"] = chapter.doi;
   });
 
   await quoteFields(app, file, ["title", "type", "booktitle"]);
-
-  if (!file.path.startsWith(`${BIBLIO_FOLDER}/`)) {
-    const newPath = `${BIBLIO_FOLDER}/${file.name}`;
-    try {
-      await app.fileManager.renameFile(file, newPath);
-      new Notice(`Bibman: frontmatter actualizado y nota movida a ${BIBLIO_FOLDER}.`);
-    } catch (err) {
-      new Notice(`Bibman: frontmatter actualizado, pero no se pudo mover la nota.\n${String(err)}`);
-    }
-  } else {
-    new Notice("Bibman: frontmatter de capítulo actualizado.");
-  }
+  new Notice("Bibman: frontmatter de capítulo actualizado.");
+  await moveAndRenameFileByCiteKey(app, file, capturedAuthors, capturedYear);
 }
 
 // ── Modals ────────────────────────────────────────────────────────────────────

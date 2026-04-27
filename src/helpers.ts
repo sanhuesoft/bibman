@@ -1,4 +1,5 @@
-import { App, TFile } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
+import { BIBLIO_FOLDER } from "./constants";
 
 /**
  * Reads the raw frontmatter of `file` and wraps the scalar value of each
@@ -68,4 +69,80 @@ export function normalizeDoi(raw: string): string {
   const prefixMatch = s.match(/^doi:\s*(\S+)/i);
   if (prefixMatch) return prefixMatch[1]!;
   return s;
+}
+
+/**
+ * Extracts the last name from an author string.
+ * Handles "LastName, F. M." format (returns part before comma)
+ * and "First Last" format (returns last word).
+ */
+export function extractLastName(authorStr: string): string {
+  const trimmed = authorStr.trim();
+  if (trimmed.includes(",")) {
+    return trimmed.slice(0, trimmed.indexOf(",")).trim();
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1]! : trimmed;
+}
+
+/**
+ * Builds a citation key from a list of author strings and a year.
+ * 1 author  → LastNameYear
+ * 2 authors → LastName1LastName2Year
+ * 3+ authors → LastName1etalYear
+ */
+export function buildCiteKey(authors: string[], year: number | string): string {
+  const y = String(year);
+  if (authors.length === 0) return y;
+  if (authors.length === 1) return extractLastName(authors[0]!) + y;
+  if (authors.length === 2)
+    return extractLastName(authors[0]!) + extractLastName(authors[1]!) + y;
+  return extractLastName(authors[0]!) + ".etal" + y;
+}
+
+/**
+ * Moves `file` to `BIBLIO_FOLDER` and, if authors and year are provided,
+ * renames it to the citation key. Both operations are done in a single
+ * `renameFile` call so the file is never in an intermediate state.
+ *
+ * If a file with the target name already exists, a sequential lowercase
+ * letter suffix is appended (a, b, c, …).
+ *
+ * Does nothing if the file is already at the correct path.
+ */
+export async function moveAndRenameFileByCiteKey(
+  app: App,
+  file: TFile,
+  authors: string[],
+  year: number | string | null | undefined,
+): Promise<void> {
+  // Determine the target basename (cite key or keep current name)
+  const baseName =
+    year && authors.length > 0 ? buildCiteKey(authors, year) : file.basename;
+
+  // Find a free name inside BIBLIO_FOLDER
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  let finalName = baseName;
+  for (let i = 0; ; i++) {
+    const candidate = i === 0 ? baseName : baseName + alphabet[i - 1]!;
+    const candidatePath = `${BIBLIO_FOLDER}/${candidate}.md`;
+    const existing = app.vault.getAbstractFileByPath(candidatePath);
+    if (!existing || existing === file) {
+      finalName = candidate;
+      break;
+    }
+    if (i >= alphabet.length) {
+      new Notice(`Bibman: no se pudo encontrar un nombre libre para "${baseName}".`);
+      return;
+    }
+  }
+
+  const newPath = `${BIBLIO_FOLDER}/${finalName}.md`;
+  if (file.path === newPath) return; // already in the right place
+
+  try {
+    await app.fileManager.renameFile(file, newPath);
+  } catch {
+    new Notice(`Bibman: no se pudo mover/renombrar la nota a "${finalName}".`);
+  }
 }
