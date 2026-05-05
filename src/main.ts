@@ -18,6 +18,7 @@ import { WebInputModal } from "./web";
 import { ConfirmCreateModal } from "./modals";
 import { BibmanSettingTab } from "./settings";
 import { runUpdateReferences } from "./references";
+import { formatCiteLabel } from "./helpers";
 
 export class BibmanPlugin extends Plugin {
   private bibSuggest: BibCiteSuggest | null = null;
@@ -412,7 +413,7 @@ export class BibmanPlugin extends Plugin {
             span.dataset.bibkey = key;
             if (pages) span.dataset.bibpages = pages;
             span.dataset.bibvariant = "triple";
-            span.textContent = "[referencia]";
+            span.textContent = formatCiteLabel(key ?? "");
             frags.push(span);
           } else {
             const sup = document.createElement("sup");
@@ -489,7 +490,7 @@ export class BibmanPlugin extends Plugin {
       const cites = Array.from(view.containerEl.querySelectorAll<HTMLElement>(".bibman-cite"));
       for (const cite of cites) {
         if (cite.dataset.bibvariant === "triple") {
-          cite.textContent = "Referencia";
+          cite.textContent = formatCiteLabel(cite.dataset.bibkey ?? "");
         } else {
           cite.textContent = "[R]";
         }

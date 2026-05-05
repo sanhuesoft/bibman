@@ -56,6 +56,38 @@ export function formatAuthorApa(name: string): string {
   return initials ? `${last}, ${initials}` : last;
 }
 
+/**
+ * Converts a citation key into a human-readable label.
+ *
+ * Recognised patterns (year = 4 digits + optional lowercase letter):
+ *   AuthorYYYY           → "Author (YYYY)"
+ *   Author1.Author2YYYY  → "Author1 & Author2 (YYYY)"
+ *   Author.etalYYYY      → "Author et al. (YYYY)"
+ *
+ * Any key that doesn't end with a 4-digit year is returned as-is.
+ */
+export function formatCiteLabel(key: string): string {
+  const m = key.match(/^(.+?)(\d{4}[a-z]?)$/);
+  if (!m) return key;
+
+  const authorPart = m[1]!;
+  const year = m[2]!;
+
+  const dotIdx = authorPart.indexOf(".");
+  if (dotIdx !== -1) {
+    const first = authorPart.slice(0, dotIdx);
+    const second = authorPart.slice(dotIdx + 1);
+    if (second.toLowerCase() === "etal") {
+      return `${first} et al. (${year})`;
+    }
+    if (second.length > 0) {
+      return `${first} & ${second} (${year})`;
+    }
+  }
+
+  return `${authorPart} (${year})`;
+}
+
 /** Strips spaces and hyphens from a raw ISBN string. */
 export function normalizeIsbn(raw: string): string {
   return raw.trim().replace(/[\s-]/g, "");
