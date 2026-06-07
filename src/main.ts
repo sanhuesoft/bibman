@@ -9,13 +9,13 @@ import {
 
 import { BIBLIO_FOLDER } from "./constants";
 import { BibmanSettings, DEFAULT_SETTINGS, BibEntry } from "./types";
-import { citationEditorPlugin } from "./editor-extension";
+import { buildCitationEditorPlugin } from "./editor-extension";
 import { BibmanRenderChild } from "./popup";
 import { BibCiteSuggest } from "./suggest";
 import { DoiInputModal } from "./doi";
 import { IsbnInputModal, IsbnChapterInputModal } from "./isbn";
 import { WebInputModal } from "./web";
-import { ConfirmCreateModal } from "./modals";
+import { ConfirmCreateModal, InsertCitationModal } from "./modals";
 import { BibmanSettingTab } from "./settings";
 import { runUpdateReferences } from "./references";
 import { formatCiteLabel } from "./helpers";
@@ -61,10 +61,20 @@ export class BibmanPlugin extends Plugin {
     );
 
     this.registerMarkdownPostProcessor(this.postProcessor.bind(this));
-    this.registerEditorExtension(citationEditorPlugin);
+    this.registerEditorExtension(buildCitationEditorPlugin(this));
 
     this.bibSuggest = new BibCiteSuggest(this.app, this);
     this.registerEditorSuggest(this.bibSuggest);
+
+    this.addRibbonIcon("book-plus", "Insertar referencia bibliográfica", () => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      const editor = view?.editor;
+      if (!editor) {
+        new Notice("Bibman: abre una nota primero.");
+        return;
+      }
+      new InsertCitationModal(this.app, editor, this.recentlyUsed, BIBLIO_FOLDER).open();
+    });
 
     void this.rebuildPlaceholderIndex();
     this.registerEvent(
@@ -129,6 +139,13 @@ export class BibmanPlugin extends Plugin {
         }
         new Notice("Bibman: el cursor no está dentro de una referencia {{\u2026}}.");
       },
+    });
+
+    this.addCommand({
+      id: "insert-citation",
+      name: "Insertar referencia bibliográfica",
+      editorCallback: (editor: Editor) =>
+        new InsertCitationModal(this.app, editor, this.recentlyUsed, BIBLIO_FOLDER).open(),
     });
 
     // ── [EXPERIMENTAL] Update references command – remove this block to disable ──
@@ -492,6 +509,7 @@ export class BibmanPlugin extends Plugin {
         if (cite.dataset.bibvariant === "triple") {
           cite.textContent = formatCiteLabel(cite.dataset.bibkey ?? "");
         } else {
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
           cite.textContent = "[R]";
         }
       }

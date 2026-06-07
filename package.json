@@ -1,6 +1,6 @@
 {
 	"name": "bibman",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Gestiona referencias bibliográficas inline con la sintaxis {{referencia}} y {{referencia:pag-pag}}.",
 	"main": "main.js",
 	"type": "module",

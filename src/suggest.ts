@@ -12,44 +12,16 @@ import type { BibSuggestion } from "./types";
 
 export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
   readonly plugin: BibmanPlugin;
-  _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(app: App, plugin: BibmanPlugin) {
     super(app);
     this.plugin = plugin;
-
-    // Intercept Tab in capture phase so we can confirm the suggestion
-    // with cursor-before-}} behaviour before Obsidian swallows the key.
-    this._keydownHandler = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || !this.context) return;
-      const chooser = (this as unknown as { chooser?: { values: BibSuggestion[]; selectedItem: number } }).chooser;
-      if (!chooser) return;
-      const item = chooser.values?.[chooser.selectedItem];
-      if (!item) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if ("create" in item) {
-        this._createAndInsert(item.name, true);
-      } else if ("placeholder" in item) {
-        this._insert(item.name, true);
-      } else {
-        this._insert(item.basename, true);
-      }
-      this.close();
-    };
-    document.addEventListener("keydown", this._keydownHandler, true);
   }
 
-  /** Remove the keydown listener. Call from BibmanPlugin.onunload(). */
-  destroy(): void {
-    if (this._keydownHandler) {
-      document.removeEventListener("keydown", this._keydownHandler, true);
-      this._keydownHandler = null;
-    }
-  }
+  destroy(): void {}
 
-  /** Shared insert logic. tabMode=true → cursor before }}, false → after }} */
-  private _insert(basename: string, tabMode: boolean): void {
+  /** Shared insert logic. */
+  private _insert(basename: string): void {
     const ctx = this.context as unknown as {
       start: { line: number; ch: number };
       end: { line: number; ch: number };
@@ -60,7 +32,6 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
 
     const prefix = editor.getRange(ctx.start, ctx.end);
     const isTriple = prefix.startsWith("{{{");
-    const insertText = isTriple ? `{{{${basename}}}}` : `{{${basename}}}`;
     const closingLen = isTriple ? 3 : 2;
 
     // Detect auto-paired closing braces already present after the cursor
@@ -70,9 +41,8 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
     const extra = trailingMatch ? Math.min(trailingMatch[1]!.length, closingLen) : 0;
     const replaceEnd = extra > 0 ? { line: ctx.end.line, ch: ctx.end.ch + extra } : ctx.end;
 
-    const cursorCh = tabMode
-      ? ctx.start.ch + insertText.length - closingLen  // before }}
-      : ctx.start.ch + insertText.length;              // after }}
+    const insertText = isTriple ? `{{{${basename}}}}` : `{{${basename}}}`;
+    const cursorCh = ctx.start.ch + insertText.length;
 
     editor.replaceRange(insertText, ctx.start, replaceEnd);
     try {
@@ -89,7 +59,7 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
   }
 
   /** Creates the file in Bibliografía if absent, then immediately inserts the citation. */
-  private _createAndInsert(name: string, tabMode: boolean): void {
+  private _createAndInsert(name: string): void {
     const useBiblio = this.plugin.settings.moveNewNoteToBiblio;
     const path = useBiblio ? `${BIBLIO_FOLDER}/${name}.md` : `${name}.md`;
     const existing = this.app.vault.getAbstractFileByPath(path);
@@ -100,7 +70,7 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
     } else {
       openFile(existing);
     }
-    this._insert(name, tabMode);
+    this._insert(name);
   }
 
   onTrigger(
@@ -165,9 +135,14 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
       return [...files.slice().sort(sortByRecency), ...placeholderSuggestions].slice(0, 100);
     }
 
-    const results = files.filter(
-      (f) => f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
-    );
+    const results = files.filter((f) => {
+      if (f.basename.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)) {
+        return true;
+      }
+      const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+      const title = typeof fm?.["title"] === "string" ? fm["title"].toLowerCase() : "";
+      return title.includes(q);
+    });
 
     const sorted: BibSuggestion[] = [
       ...results.sort(sortByRecency),
@@ -189,27 +164,38 @@ export class BibCiteSuggest extends EditorSuggest<BibSuggestion> {
       el.addClass("bibman-suggest--create");
       const div = el.createEl("div", { text: `Crear "${item.name}"` });
       div.addClass("bibman-suggest-name");
+
+      const meta = el.createEl("div", { text: "\u00A0" });
+      meta.addClass("bibman-suggest-meta");
     } else if ("placeholder" in item) {
       el.addClass("bibman-suggest--placeholder");
       const div = el.createEl("div", { text: item.name });
       div.addClass("bibman-suggest-name");
       const badge = el.createEl("span", { text: "Sin nota" });
       badge.addClass("bibman-suggest-badge");
+
+      const meta = el.createEl("div", { text: "\u00A0" });
+      meta.addClass("bibman-suggest-meta");
     } else {
       const div = el.createEl("div", { text: item.basename });
       div.addClass("bibman-suggest-name");
+
+      // Optional title from frontmatter
+      const fm = this.app.metadataCache.getFileCache(item)?.frontmatter;
+      const title = typeof fm?.["title"] === "string" ? fm["title"].trim() : "";
+
+      const meta = el.createEl("div", { text: title || "\u00A0" });
+      meta.addClass("bibman-suggest-meta");
     }
   }
 
   selectSuggestion(item: BibSuggestion, _evt: KeyboardEvent | MouseEvent): void {
-    // Enter / click → cursor after }}
-    // Tab is handled by the keydown interceptor above; this path is never Tab.
     if ("create" in item) {
-      this._createAndInsert(item.name, false);
+      this._createAndInsert(item.name);
     } else if ("placeholder" in item) {
-      this._insert(item.name, false);
+      this._insert(item.name);
     } else {
-      this._insert(item.basename, false);
+      this._insert(item.basename);
     }
   }
 }
